@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 function TeacherProfile() {
   const [teacher, setTeacher] = useState(null);
@@ -13,6 +15,7 @@ function TeacherProfile() {
   const [selectedHistory, setSelectedHistory] = useState(null); // Updated state for modal viewing
   const [historySemesterFilter, setHistorySemesterFilter] = useState(''); // New history filter state
   const [selectedSession, setSelectedSession] = useState('Lecture 1'); // Session selection state
+  const [showPdfModal, setShowPdfModal] = useState(false);
   
   // Smart Attendance States
   const [markingMode, setMarkingMode] = useState('manual'); // 'manual' or 'smart'
@@ -271,6 +274,100 @@ function TeacherProfile() {
     }
   };
 
+  const handleDownloadPDF = () => {
+    setShowPdfModal(true);
+  };
+
+  const generatePDF = async (withCreds) => {
+    const doc = new jsPDF();
+    
+    // Draw Header using Canvas (to support Punjabi fonts)
+    const headerImg = await new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1600;
+      canvas.height = 360;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, 1600, 360);
+
+      const logoImg = new Image();
+      logoImg.src = '/IMAGES/logo.webp';
+      logoImg.crossOrigin = "anonymous";
+      logoImg.onload = () => {
+        // Logo
+        ctx.drawImage(logoImg, 40, 40, 280, 280);
+        
+        ctx.textAlign = 'left';
+        
+        // Punjabi Title
+        ctx.fillStyle = '#8a2c20';
+        ctx.font = 'bold 44px "Segoe UI", Arial, sans-serif';
+        ctx.fillText('ਮਹਾਰਾਜਾ ਰਣਜੀਤ ਸਿੰਘ ਪੰਜਾਬ ਟੈਕਨੀਕਲ ਯੂਨੀਵਰਸਿਟੀ, ਬਠਿੰਡਾ', 360, 100);
+        
+        // English Title
+        ctx.font = 'bold 36px "Segoe UI", Arial, sans-serif';
+        ctx.fillText('Maharaja Ranjit Singh Punjab Technical University, BATHINDA', 360, 160);
+        
+        // Subtext
+        ctx.fillStyle = '#555';
+        ctx.font = 'italic 20px "Segoe UI", Arial, sans-serif';
+        ctx.fillText('(A State University Established By Govt. of Punjab vide Punjab Act No. 5 of 2015', 360, 200);
+        ctx.fillText('and Approved Under Section 2(f) & 12 (B) of UGC)', 360, 230);
+        
+        // Report Separator
+        ctx.fillStyle = '#8a2c20';
+        ctx.fillRect(360, 260, 1200, 4);
+
+        // Report Information
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 32px "Segoe UI", Arial, sans-serif';
+        ctx.fillText(`STUDENT LIST - ${semesterFilter === 'All' ? 'ALL SEMESTERS' : semesterFilter.toUpperCase()}`, 360, 310);
+
+        resolve(canvas.toDataURL('image/png'));
+      };
+      logoImg.onerror = () => resolve(null);
+    });
+
+    if (headerImg) {
+      doc.addImage(headerImg, 'PNG', 0, 0, 210, 47);
+    } else {
+      // Fallback
+      doc.setFillColor(138, 44, 32);
+      doc.rect(0, 0, 210, 40, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(22);
+      doc.text('MRSPTU ATTENDANCE MANAGEMENT', 105, 20, { align: 'center' });
+    }
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 15, 55);
+    doc.text(`Professor: ${teacher.fullName}`, 15, 60);
+    doc.text(`Department: ${teacher.department}`, 15, 65);
+
+    let headers = [['Name', 'Roll No', 'Course', 'Semester', 'Email']];
+    if (withCreds) headers[0].push('Username', 'Password');
+    
+    const data = filteredBySemester.map(s => {
+      const row = [s.fullName, s.enrollmentNumber, s.course, s.semester, s.email];
+      if (withCreds) row.push(s.username, s.password);
+      return row;
+    });
+
+    autoTable(doc, {
+      head: headers,
+      body: data,
+      startY: 75,
+      theme: 'grid',
+      headStyles: { fillColor: [138, 44, 32], textColor: 255 },
+      styles: { fontSize: 8 }
+    });
+
+    doc.save(`students_list_${Date.now()}.pdf`);
+    setShowPdfModal(false);
+  };
+
   const handlePasswordChange = (e) => {
     e.preventDefault();
     setPwdUpdateMsg({ text: '', type: '' });
@@ -470,6 +567,13 @@ function TeacherProfile() {
                   <option key={sem} value={sem}>{sem}</option>
                 ))}
               </select>
+              {filteredBySemester.length > 0 && (
+                <button 
+                  onClick={handleDownloadPDF}
+                  style={{ marginLeft: '10px', background: '#27ae60', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                  📥 Download List PDF
+                </button>
+              )}
             </div>
             
             {filteredBySemester.length === 0 ? (
@@ -1068,6 +1172,35 @@ function TeacherProfile() {
                 Verify & Delete Record
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showPdfModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000 }}>
+          <div style={{ background: 'white', padding: '40px', borderRadius: '15px', width: '450px', boxShadow: '0 15px 40px rgba(0,0,0,0.3)', textAlign: 'center' }}>
+            <div style={{ fontSize: '40px', marginBottom: '15px' }}>📄</div>
+            <h3 style={{ color: '#8a2c20', marginBottom: '10px' }}>Export Student List PDF</h3>
+            <p style={{ color: '#666', marginBottom: '25px', fontSize: '15px' }}>
+              Would you like to include sensitive login credentials (<strong>Username & Password</strong>) in the exported student list?
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+              <button 
+                onClick={() => generatePDF(true)} 
+                style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                Yes, Include Credentials
+              </button>
+              <button 
+                onClick={() => generatePDF(false)} 
+                style={{ background: '#3498db', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                No, Basic Info Only
+              </button>
+            </div>
+            <button 
+              onClick={() => setShowPdfModal(false)} 
+              style={{ marginTop: '20px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '13px' }}>
+              Cancel Export
+            </button>
           </div>
         </div>
       )}
