@@ -11,7 +11,7 @@ async function testSave() {
   };
 
   try {
-    const response = await fetch('http://localhost:5000/api/teachers', {
+    const response = await fetch('https://attendance-management-backend-do1l.onrender.com', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(teacher)
