@@ -21,24 +21,46 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' })); // Increased limit for face images
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
+// Root health check
+app.get('/', (req, res) => {
+  res.send('Attendance Management System API is Running');
+});
+
+app.get('/api/health', (req, res) => {
+  const status = mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected';
+  res.json({ status, database: status });
+});
+
 // MongoDB Connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/attendance_system';
-mongoose.connect(MONGODB_URI)
+
+console.log('⏳ Connecting to MongoDB...');
+mongoose.connect(MONGODB_URI, {
+  serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+})
   .then(async () => {
     console.log('✅ Connected to MongoDB');
     // Seed default admin if none exists
-    const adminCount = await Admin.countDocuments();
-    if (adminCount === 0) {
-      const defaultAdmin = new Admin({
-        email: 'admin@mrsptu.ac.in',
-        password: 'admin@1234',
-        role: 'admin'
-      });
-      await defaultAdmin.save();
-      console.log('👤 Default admin created: admin@mrsptu.ac.in / admin@1234');
+    try {
+      const adminCount = await Admin.countDocuments();
+      if (adminCount === 0) {
+        const defaultAdmin = new Admin({
+          email: 'admin@mrsptu.ac.in',
+          password: 'admin@1234',
+          role: 'admin'
+        });
+        await defaultAdmin.save();
+        console.log('👤 Default admin created: admin@mrsptu.ac.in / admin@1234');
+      }
+    } catch (seedErr) {
+      console.error('⚠️ Seeding Error:', seedErr.message);
     }
   })
-  .catch((err) => console.error('❌ MongoDB Connection Error:', err));
+  .catch((err) => {
+    console.error('❌ MongoDB Connection Error:', err.message);
+    console.error('👉 Make sure you have set MONGODB_URI in your environment variables.');
+  });
+
 
 // --- API ROUTES ---
 
