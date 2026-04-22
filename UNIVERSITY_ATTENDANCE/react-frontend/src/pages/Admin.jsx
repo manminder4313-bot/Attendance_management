@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import api from '../services/api';
 
 function Admin() {
   const [submissions, setSubmissions] = useState([]);
@@ -56,34 +57,24 @@ function Admin() {
     loadSubmissions();
   }, [navigate, isAdminLoggedIn, isDepartmentLoggedIn, activeTab]);
 
-  const loadSubmissions = () => {
-    const data = JSON.parse(localStorage.getItem('teacherSubmissions')) || [];
-    setSubmissions(data);
-    const sData = JSON.parse(localStorage.getItem('studentSubmissions')) || [];
-    setStudentSubmissions(sData);
-    const dData = JSON.parse(localStorage.getItem('departmentSubmissions')) || [];
-    setDepartmentSubmissions(dData);
+  const loadSubmissions = async () => {
+    try {
+      const [teachers, students, depts, admins, recs] = await Promise.all([
+        api.teachers.getAll(),
+        api.students.getAll(),
+        api.departments.getAll(),
+        api.admins.getAll(),
+        api.attendance.getAll()
+      ]);
 
-    let aData = JSON.parse(localStorage.getItem('adminCredentials'));
-    if (!aData) aData = [];
-    else if (!Array.isArray(aData)) aData = [aData];
-    
-    // Auto-repair default admin data if missing fields
-    const repairedAdmins = aData.map(admin => {
-      if (admin.id === 'admin') {
-        return {
-          ...admin,
-          fullName: admin.fullName || 'System Administrator',
-          submissionDate: admin.submissionDate || 'System Initialized'
-        };
-      }
-      return admin;
-    });
-    
-    setAdminSubmissions(repairedAdmins);
-    
-    const aRecs = JSON.parse(localStorage.getItem('attendanceRecords')) || [];
-    setAttendanceRecords(aRecs);
+      setSubmissions(teachers);
+      setStudentSubmissions(students);
+      setDepartmentSubmissions(depts);
+      setAdminSubmissions(admins);
+      setAttendanceRecords(recs);
+    } catch (err) {
+      console.error('Error loading data from MongoDB:', err);
+    }
   };
 
   const compressImage = (file, callback) => {

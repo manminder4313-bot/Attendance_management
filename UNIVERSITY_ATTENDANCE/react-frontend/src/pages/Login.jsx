@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 function Login() {
   const [id, setId] = useState('');
   const [pwd, setPwd] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // Reset Password states
   const [showResetModal, setShowResetModal] = useState(false);
@@ -13,132 +15,79 @@ function Login() {
 
   const navigate = useNavigate();
 
+  const [hasLocalData, setHasLocalData] = useState(false);
+
   useEffect(() => {
-    if (!localStorage.getItem('adminCredentials')) {
-      localStorage.setItem('adminCredentials', JSON.stringify([{
-        id: 'admin',
-        password: 'admin@1234',
-        email: 'admin@mrsptu.ac.in',
-        contact: '+91-1644-239205',
-        fullName: 'System Administrator',
-        submissionDate: new Date().toLocaleString()
-      }]));
-    }
+    // Check if there is data to migrate
+    const keys = ['teacherSubmissions', 'studentSubmissions', 'attendanceRecords', 'departmentSubmissions'];
+    const hasData = keys.some(key => localStorage.getItem(key));
+    setHasLocalData(hasData);
   }, []);
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    
-    // 1. Check Admin Credentials
-    let adminCreds = [];
+  const handleSync = async () => {
+    setIsSyncing(true);
     try {
-      const parsed = JSON.parse(localStorage.getItem('adminCredentials'));
-      if (parsed) adminCreds = Array.isArray(parsed) ? parsed : [parsed];
+      const dataToSync = {
+        teachers: JSON.parse(localStorage.getItem('teacherSubmissions')) || [],
+        students: JSON.parse(localStorage.getItem('studentSubmissions')) || [],
+        attendance: JSON.parse(localStorage.getItem('attendanceRecords')) || [],
+        departments: JSON.parse(localStorage.getItem('departmentSubmissions')) || [],
+        admins: JSON.parse(localStorage.getItem('adminCredentials')) || [],
+      };
+
+      for (const [type, data] of Object.entries(dataToSync)) {
+        if (data.length > 0) {
+          await api.sync(type, data);
+        }
+      }
+
+      // Clear local storage after successful sync
+      ['teacherSubmissions', 'studentSubmissions', 'attendanceRecords', 'departmentSubmissions', 'adminCredentials'].forEach(key => {
+        localStorage.removeItem(key);
+      });
+      
+      setHasLocalData(false);
+      alert('Data successfully migrated to MongoDB!');
     } catch (err) {
-      console.error('Error parsing adminCredentials:', err);
+      console.error('Migration failed:', err);
+      alert('Migration failed. Check console for details.');
+    } finally {
+      setIsSyncing(false);
     }
-
-    const foundAdmin = adminCreds.find(a => a.id === id && a.password === pwd);
-    if (foundAdmin) {
-      sessionStorage.setItem('isAdminLoggedIn', 'true');
-      sessionStorage.setItem('loggedInAdmin', JSON.stringify(foundAdmin));
-      navigate('/admin');
-      return;
-    }
-
-    // 2. Check Teacher Credentials
-    let teachers = [];
-    try {
-      teachers = JSON.parse(localStorage.getItem('teacherSubmissions')) || [];
-    } catch(err) {
-      console.error('Error parsing teacherSubmissions:', err);
-    }
-
-    const foundTeacher = teachers.find(t => t.username === id && t.password === pwd);
-    if (foundTeacher) {
-      sessionStorage.setItem('loggedInTeacher', JSON.stringify(foundTeacher));
-      navigate('/teacher-profile');
-      return;
-    }
-
-    // 3. Check Department Credentials
-    let departments = [];
-    try {
-      departments = JSON.parse(localStorage.getItem('departmentSubmissions')) || [];
-    } catch(err) {
-      console.error('Error parsing departmentSubmissions:', err);
-    }
-
-    const foundDept = departments.find(d => d.username === id && d.password === pwd);
-    if (foundDept) {
-      sessionStorage.setItem('isDepartmentLoggedIn', 'true');
-      sessionStorage.setItem('loggedInDepartment', JSON.stringify(foundDept));
-      navigate('/admin');
-      return;
-    }
-
-    // 4. Invalid credentials
-    setErrorMsg('Invalid credentials. Please check your ID and Password.');
   };
 
-  const handleResetPassword = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    setResetMsg({ text: '', type: '' });
+    setErrorMsg('');
+    
+    try {
+      const response = await fetch('http://localhost:5000/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, password: pwd })
+      });
 
-    if (resetData.newPwd !== resetData.confirmPwd) {
-      setResetMsg({ text: 'Passwords do not match!', type: 'error' });
-      return;
+      if (response.ok) {
+        const data = await response.json();
+        if (data.type === 'admin') {
+          sessionStorage.setItem('isAdminLoggedIn', 'true');
+          sessionStorage.setItem('loggedInAdmin', JSON.stringify(data.user));
+          navigate('/admin');
+        } else if (data.type === 'teacher') {
+          sessionStorage.setItem('loggedInTeacher', JSON.stringify(data.user));
+          navigate('/teacher-profile');
+        } else if (data.type === 'department') {
+          sessionStorage.setItem('isDepartmentLoggedIn', 'true');
+          sessionStorage.setItem('loggedInDepartment', JSON.stringify(data.user));
+          navigate('/admin');
+        }
+      } else {
+        setErrorMsg('Invalid credentials. Please check your ID and Password.');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setErrorMsg('Server error. Please make sure the backend is running.');
     }
-
-    // Find user across all types
-    let userType = '';
-    let foundUser = null;
-
-    // Check Admins
-    let admins = JSON.parse(localStorage.getItem('adminCredentials')) || [];
-    if (!Array.isArray(admins)) admins = [admins];
-    foundUser = admins.find(a => a.id === resetData.id && a.email === resetData.email);
-    if (foundUser) userType = 'admin';
-
-    // Check Teachers
-    if (!foundUser) {
-      let teachers = JSON.parse(localStorage.getItem('teacherSubmissions')) || [];
-      foundUser = teachers.find(t => t.username === resetData.id && t.email === resetData.email);
-      if (foundUser) userType = 'teacher';
-    }
-
-    // Check Departments
-    if (!foundUser) {
-      let depts = JSON.parse(localStorage.getItem('departmentSubmissions')) || [];
-      foundUser = depts.find(d => d.username === resetData.id && d.email === resetData.email);
-      if (foundUser) userType = 'department';
-    }
-
-    if (!foundUser) {
-      setResetMsg({ text: 'User ID or Email not found.', type: 'error' });
-      return;
-    }
-
-    // Update password
-    if (userType === 'admin') {
-      const updated = admins.map(a => (a.id === resetData.id ? { ...a, password: resetData.newPwd } : a));
-      localStorage.setItem('adminCredentials', JSON.stringify(updated));
-    } else if (userType === 'teacher') {
-      let teachers = JSON.parse(localStorage.getItem('teacherSubmissions')) || [];
-      const updated = teachers.map(t => (t.username === resetData.id ? { ...t, password: resetData.newPwd } : t));
-      localStorage.setItem('teacherSubmissions', JSON.stringify(updated));
-    } else if (userType === 'department') {
-      let depts = JSON.parse(localStorage.getItem('departmentSubmissions')) || [];
-      const updated = depts.map(d => (d.username === resetData.id ? { ...d, password: resetData.newPwd } : d));
-      localStorage.setItem('departmentSubmissions', JSON.stringify(updated));
-    }
-
-    setResetMsg({ text: 'Password updated successfully! You can now login.', type: 'success' });
-    setTimeout(() => {
-      setShowResetModal(false);
-      setResetData({ id: '', email: '', newPwd: '', confirmPwd: '' });
-      setResetMsg({ text: '', type: '' });
-    }, 2000);
   };
 
   return (
@@ -170,6 +119,22 @@ function Login() {
           </div>
           <button type="submit" className="btn-primary">Login</button>
         </form>
+
+        {hasLocalData && (
+          <div className="sync-section" style={{ marginTop: '20px', padding: '15px', background: 'rgba(255, 107, 107, 0.1)', borderRadius: '8px', border: '1px dashed #ff6b6b' }}>
+            <p style={{ fontSize: '12px', marginBottom: '10px', color: '#ff6b6b' }}>
+              <strong>Legacy Data Found!</strong> Click below to migrate your local data to MongoDB.
+            </p>
+            <button 
+              onClick={handleSync} 
+              disabled={isSyncing}
+              className="btn-secondary"
+              style={{ width: '100%', padding: '10px', cursor: 'pointer' }}
+            >
+              {isSyncing ? 'Migrating...' : '🚀 Sync to MongoDB'}
+            </button>
+          </div>
+        )}
 
         <div style={{ marginTop: '25px', paddingTop: '20px', borderTop: '1px solid var(--gray-border)', fontSize: '13px', color: 'var(--text-light)', textAlign: 'center' }}>
           <p>Admin Support: admin@mrsptu.ac.in</p>

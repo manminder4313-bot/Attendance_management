@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import api from '../services/api';
 
 function StudentFaceUpload() {
   const [rollNo, setRollNo] = useState('');
@@ -16,26 +17,26 @@ function StudentFaceUpload() {
     const qRoll = searchParams.get('rollNo');
     if (qRoll) {
       setRollNo(qRoll);
-      // Auto-trigger finding the student
-      const students = JSON.parse(localStorage.getItem('studentSubmissions')) || [];
-      const found = students.find(s => s.enrollmentNumber === qRoll);
-      if (found) {
-        setStudent(found);
-        setStatus({ text: `Identity Verified: ${found.fullName}`, type: 'success' });
-      }
+      findStudent(qRoll);
     }
   }, [searchParams]);
 
-  const findStudent = () => {
-    if (!rollNo) return;
-    const studentsList = JSON.parse(localStorage.getItem('studentSubmissions')) || [];
-    const found = studentsList.find(s => s.enrollmentNumber === rollNo);
-    if (found) {
-      setStudent(found);
-      setStatus({ text: `Student found: ${found.fullName}`, type: 'success' });
-    } else {
-      setStudent(null);
-      setStatus({ text: 'Roll Number not found. Please check and try again.', type: 'error' });
+  const findStudent = async (queryRoll) => {
+    const roll = queryRoll || rollNo;
+    if (!roll) return;
+    try {
+      const studentsList = await api.students.getAll();
+      const found = studentsList.find(s => s.enrollmentNumber === roll || s.rollNumber === roll);
+      if (found) {
+        setStudent(found);
+        setStatus({ text: `Identity Verified: ${found.fullName || found.name}`, type: 'success' });
+      } else {
+        setStudent(null);
+        setStatus({ text: 'Roll Number not found. Please check and try again.', type: 'error' });
+      }
+    } catch (err) {
+      console.error('Error finding student:', err);
+      setStatus({ text: 'Error connecting to database.', type: 'error' });
     }
   };
 
@@ -43,7 +44,6 @@ function StudentFaceUpload() {
     try {
       setStatus({ text: 'Initializing Camera...', type: 'info' });
       
-      // Robust constraints for better compatibility
       const constraints = {
         video: { 
           width: { ideal: 640 }, 
@@ -58,7 +58,6 @@ function StudentFaceUpload() {
       setCapturedImage(null);
       setStatus({ text: '', type: '' });
       
-      // We'll use a small timeout to ensure the video element is rendered before attaching
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -82,27 +81,22 @@ function StudentFaceUpload() {
     
     const video = videoRef.current;
     const canvas = document.createElement('canvas');
-    
-    // Capture at a high but manageable resolution
     const size = 600;
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d');
     
-    // Calculate square crop from center
     const videoWidth = video.videoWidth;
     const videoHeight = video.videoHeight;
     const minDim = Math.min(videoWidth, videoHeight);
     const sx = (videoWidth - minDim) / 2;
     const sy = (videoHeight - minDim) / 2;
     
-    // Mirror the capture to match the preview
     ctx.translate(size, 0);
     ctx.scale(-1, 1);
-    
     ctx.drawImage(video, sx, sy, minDim, minDim, 0, 0, size, size);
     
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.7); // 0.7 quality saves space
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
     setCapturedImage(dataUrl);
     stopCamera();
     setStatus({ text: 'Photo captured! Ready for enrollment.', type: 'success' });
@@ -115,52 +109,30 @@ function StudentFaceUpload() {
     setIsCameraOpen(false);
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (!capturedImage || !student) return;
     setLoading(true);
-    setStatus({ text: 'Securing student data...', type: 'info' });
+    setStatus({ text: 'Securing student data in MongoDB...', type: 'info' });
 
-    setTimeout(() => {
-      try {
-        const studentsList = JSON.parse(localStorage.getItem('studentSubmissions')) || [];
-        
-        // Use a more robust match (ID or Enrollment Number)
-        const studentIndex = studentsList.findIndex(s => 
-          String(s.id) === String(student.id) || 
-          s.enrollmentNumber === student.enrollmentNumber
-        );
-
-        if (studentIndex !== -1) {
-          // Update the specific student in the list
-          studentsList[studentIndex] = {
-            ...studentsList[studentIndex],
-            enrolledFace: capturedImage,
-            lastEnrollmentUpdate: new Date().toISOString()
-          };
-
-          localStorage.setItem('studentSubmissions', JSON.stringify(studentsList));
-          
-          setLoading(false);
-          setStatus({ text: `Success! ${student.fullName}'s face profile is now active.`, type: 'success' });
-          
-          // Clear states after a short delay
-          setTimeout(() => {
-            setCapturedImage(null);
-            setStudent(null);
-            setRollNo('');
-          }, 3000);
-        } else {
-          throw new Error("Student record was moved or deleted.");
-        }
-      } catch (err) {
-        console.error('Upload Error:', err);
-        setLoading(false);
-        const errorMsg = err.name === 'QuotaExceededError' 
-          ? "Storage full! Please tell your teacher to clear old records." 
-          : "Update failed: " + err.message;
-        setStatus({ text: errorMsg, type: 'error' });
-      }
-    }, 1500);
+    try {
+      await api.students.update(student._id || student.id, {
+        enrolledFace: capturedImage,
+        lastEnrollmentUpdate: new Date().toISOString()
+      });
+      
+      setLoading(false);
+      setStatus({ text: `Success! ${student.fullName || student.name}'s face profile is now active.`, type: 'success' });
+      
+      setTimeout(() => {
+        setCapturedImage(null);
+        setStudent(null);
+        setRollNo('');
+      }, 3000);
+    } catch (err) {
+      console.error('Upload Error:', err);
+      setLoading(false);
+      setStatus({ text: "Update failed: " + err.message, type: 'error' });
+    }
   };
 
   return (

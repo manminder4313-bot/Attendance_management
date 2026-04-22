@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import emailjs from '@emailjs/browser';
+import api from '../services/api';
 
 function FormPage() {
   const [formData, setFormData] = useState({
@@ -50,25 +51,23 @@ function FormPage() {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
-    setTimeout(() => {
-      const username = (formData.fullName.split(' ')[0].toLowerCase() + formData.phone.slice(-4)).replace(/[^a-z0-9]/g, '');
-      const password = Math.random().toString(36).slice(-8);
+    const username = (formData.fullName.split(' ')[0].toLowerCase() + formData.phone.slice(-4)).replace(/[^a-z0-9]/g, '');
+    const password = Math.random().toString(36).slice(-8);
 
-      const teacherData = {
-        ...formData,
-        id: Date.now(),
-        username,
-        password,
-        submissionDate: new Date().toLocaleString()
-      };
+    const teacherData = {
+      ...formData,
+      username,
+      password,
+      submissionDate: new Date().toLocaleString()
+    };
 
-      let submissions = JSON.parse(localStorage.getItem('teacherSubmissions')) || [];
-      submissions.push(teacherData);
-      localStorage.setItem('teacherSubmissions', JSON.stringify(submissions));
+    try {
+      // Save to MongoDB
+      await api.teachers.create(teacherData);
 
       const templateParams = {
         teacher_name: formData.fullName,
@@ -78,22 +77,18 @@ function FormPage() {
         admin_email: 'gmaan9964@gmail.com'
       };
 
-      try {
-        emailjs.init("knu1QdkOUOaYiTwFF");
-        emailjs.send('service_dosao84', 'service_dosao84', templateParams)
-          .then(() => {
-            alert(`Success! Account created for ${formData.fullName}.\n\nCredentials have been sent to: ${formData.email}`);
-            navigate('/');
-          })
-          .catch(() => {
-            alert(`Account created, but email failed to send.\n\n[ADMIN BACKUP]\nUsername: ${username}\nPassword: ${password}`);
-            navigate('/');
-          });
-      } catch (err) {
-        alert(`Account created.\n\n[ADMIN BACKUP]\nUsername: ${username}\nPassword: ${password}`);
-        navigate('/');
-      }
-    }, 1000);
+      emailjs.init("knu1QdkOUOaYiTwFF");
+      await emailjs.send('service_dosao84', 'service_dosao84', templateParams);
+      
+      alert(`Success! Account created for ${formData.fullName}.\n\nCredentials have been sent to: ${formData.email}`);
+      navigate('/');
+    } catch (err) {
+      console.error('Submission failed:', err);
+      alert(`Account created in DB, but email failed to send or server error.\n\n[BACKUP]\nUsername: ${username}\nPassword: ${password}`);
+      navigate('/');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
