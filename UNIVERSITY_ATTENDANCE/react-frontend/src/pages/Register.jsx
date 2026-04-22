@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import api from '../services/api';
+
 function Register() {
   const [formData, setFormData] = useState({
     id: '',
@@ -13,28 +15,23 @@ function Register() {
   const [msg, setMsg] = useState('');
   const navigate = useNavigate();
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
-
-    let aData;
-    try {
-      aData = JSON.parse(localStorage.getItem('adminCredentials'));
-    } catch(err) {}
-
-    if (!aData) aData = [];
-    else if (!Array.isArray(aData)) aData = [aData];
+    setMsg('Creating account...');
 
     const newAdmin = {
       ...formData,
-      uuid: Date.now(),
       submissionDate: new Date().toLocaleString()
     };
 
-    aData.push(newAdmin);
-
-    localStorage.setItem('adminCredentials', JSON.stringify(aData));
-    setMsg('Admin account created successfully! Redirecting to login...');
-    setTimeout(() => navigate('/login'), 2000);
+    try {
+      await api.admins.create(newAdmin);
+      setMsg('Admin account created successfully! Redirecting to login...');
+      setTimeout(() => navigate('/login'), 2000);
+    } catch (err) {
+      console.error('Registration failed:', err);
+      setMsg('Error creating account in MongoDB.');
+    }
   };
 
   const compressImage = (file, callback) => {

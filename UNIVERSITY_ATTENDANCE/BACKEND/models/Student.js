@@ -1,11 +1,20 @@
 import mongoose from 'mongoose';
 
 const StudentSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  rollNumber: { type: String, required: true, unique: true },
+  fullName: { type: String, required: true },
   email: { type: String, required: true },
-  department: { type: String, required: true },
-  faceData: { type: String }, // Storing base64 for now as per current localStorage implementation
+  phone: { type: String },
+  gender: { type: String },
+  dob: { type: String },
+  enrollmentNumber: { type: String, required: true, unique: true },
+  course: { type: String },
+  semester: { type: String },
+  profilePhoto: { type: String },
+  username: { type: String },
+  password: { type: String },
+  enrolledFace: { type: String },
+  lastEnrollmentUpdate: { type: Date },
+  faceData: { type: String }, 
   registrationDate: { type: Date, default: Date.now }
 }, { timestamps: true });
 

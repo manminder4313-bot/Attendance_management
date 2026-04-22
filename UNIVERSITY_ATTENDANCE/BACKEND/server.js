@@ -24,7 +24,20 @@ app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 // MongoDB Connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/attendance_system';
 mongoose.connect(MONGODB_URI)
-  .then(() => console.log('✅ Connected to MongoDB'))
+  .then(async () => {
+    console.log('✅ Connected to MongoDB');
+    // Seed default admin if none exists
+    const adminCount = await Admin.countDocuments();
+    if (adminCount === 0) {
+      const defaultAdmin = new Admin({
+        email: 'admin@mrsptu.ac.in',
+        password: 'admin@1234',
+        role: 'admin'
+      });
+      await defaultAdmin.save();
+      console.log('👤 Default admin created: admin@mrsptu.ac.in / admin@1234');
+    }
+  })
   .catch((err) => console.error('❌ MongoDB Connection Error:', err));
 
 // --- API ROUTES ---
@@ -141,30 +154,35 @@ app.post('/api/attendance', async (req, res) => {
 // Bulk sync endpoint for migration
 app.post('/api/sync', async (req, res) => {
   const { type, data } = req.body;
+  if (!data || !Array.isArray(data)) return res.status(400).json({ message: 'Invalid data' });
+
   try {
-    let result;
-    switch (type) {
-      case 'admins':
-        result = await Admin.insertMany(data, { ordered: false });
-        break;
-      case 'teachers':
-        result = await Teacher.insertMany(data, { ordered: false });
-        break;
-      case 'students':
-        result = await Student.insertMany(data, { ordered: false });
-        break;
-      case 'departments':
-        result = await Department.insertMany(data, { ordered: false });
-        break;
-      case 'attendance':
-        result = await Attendance.insertMany(data, { ordered: false });
-        break;
-      default:
-        return res.status(400).json({ message: 'Invalid type' });
+    let results = [];
+    for (let item of data) {
+      try {
+        let query = {};
+        if (type === 'admins' || type === 'teachers') query = { email: item.email };
+        else if (type === 'students') query = { enrollmentNumber: item.enrollmentNumber };
+        else if (type === 'departments') query = { name: item.name };
+        else if (type === 'attendance') query = { date: item.date, teacherId: item.teacherId, subject: item.subject, session: item.session };
+
+        let result;
+        switch (type) {
+          case 'admins': result = await Admin.findOneAndUpdate(query, item, { upsert: true, new: true }); break;
+          case 'teachers': result = await Teacher.findOneAndUpdate(query, item, { upsert: true, new: true }); break;
+          case 'students': result = await Student.findOneAndUpdate(query, item, { upsert: true, new: true }); break;
+          case 'departments': result = await Department.findOneAndUpdate(query, item, { upsert: true, new: true }); break;
+          case 'attendance': result = await Attendance.findOneAndUpdate(query, item, { upsert: true, new: true }); break;
+        }
+        results.push(result);
+      } catch (innerErr) {
+        console.warn(`⚠️ Skipped 1 ${type} record due to error:`, innerErr.message);
+      }
     }
-    res.status(201).json({ message: `Synced ${result.length} records` });
+    res.status(201).json({ message: `Synced ${results.length} records successfully` });
   } catch (err) {
-    res.status(400).json({ message: err.message, partial: err.writeErrors });
+    console.error('❌ Sync Error:', err);
+    res.status(500).json({ message: err.message });
   }
 });
 
@@ -172,19 +190,29 @@ app.post('/api/sync', async (req, res) => {
 app.post('/api/login', async (req, res) => {
   const { id, password } = req.body;
   try {
-    // Check Admin (id field)
-    let user = await Admin.findOne({ email: id, password });
+    // Check Admin (id field or email)
+    let user = await Admin.findOne({ 
+      $or: [{ email: id }, { id: id }], 
+      password 
+    });
     if (user) return res.json({ type: 'admin', user });
 
     // Check Teacher (username/email field)
     user = await Teacher.findOne({ 
-      $or: [{ email: id }, { name: id }], 
+      $or: [{ email: id }, { username: id }, { fullName: id }], 
       password 
     });
     if (user) return res.json({ type: 'teacher', user });
 
+    // Check Student
+    user = await Student.findOne({ 
+      $or: [{ email: id }, { enrollmentNumber: id }, { username: id }], 
+      password 
+    });
+    if (user) return res.json({ type: 'student', user });
+
     // Check Department
-    user = await Department.findOne({ name: id, password }); // Assuming name is used as ID for dept
+    user = await Department.findOne({ name: id, password }); 
     if (user) return res.json({ type: 'department', user });
 
     res.status(401).json({ message: 'Invalid credentials' });

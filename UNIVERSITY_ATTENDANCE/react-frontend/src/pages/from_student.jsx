@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 function FormStudent() {
   const [formData, setFormData] = useState({
@@ -48,29 +49,30 @@ function FormStudent() {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
-    setTimeout(() => {
-      const username = (formData.fullName.split(' ')[0].toLowerCase() + formData.phone.slice(-4)).replace(/[^a-z0-9]/g, '');
-      const password = Math.random().toString(36).slice(-8);
+    const username = (formData.fullName.split(' ')[0].toLowerCase() + formData.phone.slice(-4)).replace(/[^a-z0-9]/g, '');
+    const password = Math.random().toString(36).slice(-8);
 
-      const studentData = {
-        ...formData,
-        id: Date.now(),
-        username,
-        password,
-        submissionDate: new Date().toLocaleString()
-      };
+    const studentData = {
+      ...formData,
+      username,
+      password,
+      submissionDate: new Date().toLocaleString()
+    };
 
-      let submissions = JSON.parse(localStorage.getItem('studentSubmissions')) || [];
-      submissions.push(studentData);
-      localStorage.setItem('studentSubmissions', JSON.stringify(submissions));
-
+    try {
+      await api.students.create(studentData);
       alert(`Success! Account created for ${formData.fullName}.\n\n[ADMIN BACKUP]\nUsername: ${username}\nPassword: ${password}`);
       navigate('/');
-    }, 1000);
+    } catch (err) {
+      console.error('Submission failed:', err);
+      alert('Error saving to database. Please check if server is running.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

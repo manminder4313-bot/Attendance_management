@@ -1,11 +1,18 @@
 import mongoose from 'mongoose';
 
 const TeacherSchema = new mongoose.Schema({
-  name: { type: String, required: true },
+  fullName: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  phone: { type: String },
+  gender: { type: String },
+  dob: { type: String },
+  qualification: { type: String },
+  experience: { type: String },
   department: { type: String, required: true },
-  subject: { type: String },
+  primarySubject: { type: String },
+  profilePhoto: { type: String },
+  username: { type: String },
   role: { type: String, default: 'teacher' }
 }, { timestamps: true });
 

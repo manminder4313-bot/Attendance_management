@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import api from '../services/api';
 
 function TeacherProfile() {
   const [teacher, setTeacher] = useState(null);
@@ -11,6 +12,7 @@ function TeacherProfile() {
   
   // Attendance Marking State
   const [attendanceMarks, setAttendanceMarks] = useState({}); // { studentId: 'Present' }
+  const [attendanceRecords, setAttendanceRecords] = useState([]); // Loaded from API
   const [saveStatus, setSaveStatus] = useState({ text: '', type: '' });
   const [selectedHistory, setSelectedHistory] = useState(null); // Updated state for modal viewing
   const [historySemesterFilter, setHistorySemesterFilter] = useState(''); // New history filter state
@@ -55,8 +57,19 @@ function TeacherProfile() {
       const teacherData = JSON.parse(loggedInUser);
       setTeacher(teacherData);
       loadSubmissions(teacherData);
+      loadHistory(teacherData);
     }
-  }, [navigate]);
+  }, [navigate, activeTab]);
+
+  const loadHistory = async (teacherData) => {
+    try {
+      const allRecords = await api.attendance.getAll();
+      const teacherHistory = allRecords.filter(r => r.teacherId === (teacherData._id || teacherData.id));
+      setAttendanceRecords(teacherHistory);
+    } catch (err) {
+      console.error('Error loading history:', err);
+    }
+  };
 
   // Live clock for camera overlay
   useEffect(() => {
@@ -69,32 +82,32 @@ function TeacherProfile() {
     return () => clearInterval(timer);
   }, [isCameraOpen]);
 
-  const loadSubmissions = (teacherData) => {
-    const allStudents = JSON.parse(localStorage.getItem('studentSubmissions')) || [];
-    const filteredStudents = allStudents.filter(s => {
-      const dept = teacherData.department;
-      const course = s.course;
-      
-      // Exact Match (Computer Science)
-      if (dept === 'Computer Science' && ['BCA', 'MCA', 'B.Tech Computer Science'].includes(course)) return true;
-      // Partial Matches for Engineering
-      if (dept === 'Mechanical Engineering' && course === 'B.Tech Mechanical') return true;
-      if (dept === 'Civil Engineering' && course === 'B.Tech Civil') return true;
-      if (dept === 'Electrical Engineering' && course === 'B.Tech Electrical') return true;
-      if (dept === 'B.Tech' && course === 'B.Tech') return true;
-      
-      // Fallback: Fuzzy match or specific course requirement
-      return course?.toLowerCase().includes(dept?.toLowerCase()) || 
-             dept?.toLowerCase().includes(course?.toLowerCase());
-    });
-    setStudents(filteredStudents);
+  const loadSubmissions = async (teacherData) => {
+    try {
+      const allStudents = await api.students.getAll();
+      const filteredStudents = allStudents.filter(s => {
+        const dept = teacherData.department;
+        const course = s.course;
+        
+        if (dept === 'Computer Science' && ['BCA', 'MCA', 'B.Tech Computer Science'].includes(course)) return true;
+        if (dept === 'Mechanical Engineering' && course === 'B.Tech Mechanical') return true;
+        if (dept === 'Civil Engineering' && course === 'B.Tech Civil') return true;
+        if (dept === 'Electrical Engineering' && course === 'B.Tech Electrical') return true;
+        if (dept === 'B.Tech' && course === 'B.Tech') return true;
+        
+        return course?.toLowerCase().includes(dept?.toLowerCase()) || 
+               dept?.toLowerCase().includes(course?.toLowerCase());
+      });
+      setStudents(filteredStudents);
 
-    // Initialize marks
-    const initialMarks = {};
-    filteredStudents.forEach(s => {
-      initialMarks[s.id] = 'Present';
-    });
-    setAttendanceMarks(initialMarks);
+      const initialMarks = {};
+      filteredStudents.forEach(s => {
+        initialMarks[s._id || s.id] = 'Present';
+      });
+      setAttendanceMarks(initialMarks);
+    } catch (err) {
+      console.error('Error loading students:', err);
+    }
   };
 
   const startCamera = async () => {
@@ -228,36 +241,31 @@ function TeacherProfile() {
     saveAttendanceData(attendanceMarks, capturedImage);
   };
 
-  const saveAttendanceData = (marks, proof) => {
+  const saveAttendanceData = async (marks, proof) => {
     try {
       const semesterMarks = {};
       filteredBySemester.forEach(s => {
-        semesterMarks[s.id] = marks[s.id] || 'Present';
+        const sId = s._id || s.id;
+        semesterMarks[sId] = marks[sId] || 'Present';
       });
 
       const now = new Date();
       const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       
       const record = {
-        id: Date.now(),
         date: localDate,
-        dateDisplay: now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-        teacherId: teacher.id,
+        teacherId: teacher._id || teacher.id,
         teacherName: teacher.fullName,
         subject: teacher.primarySubject,
         semester: semesterFilter,
+        course: filteredBySemester[0]?.course, // Added for stats filtering
         department: teacher.department,
         attendance: semesterMarks,
-        proofPhoto: proof // Store the evidence image
+        proofPhoto: proof,
+        session: selectedSession
       };
 
-      const existingRecords = JSON.parse(localStorage.getItem('attendanceRecords')) || [];
-      const filteredRecords = existingRecords.filter(r => 
-        !(r.date === record.date && r.teacherId === record.teacherId && r.semester === record.semester && r.subject === record.subject && r.session === selectedSession)
-      );
-      
-      const newRecord = { ...record, session: selectedSession };
-      localStorage.setItem('attendanceRecords', JSON.stringify([...filteredRecords, newRecord]));
+      await api.attendance.create(record);
 
       setSaveStatus({ text: `Attendance for ${semesterFilter} saved successfully!`, type: 'success' });
       setCapturedImage(null); 
@@ -265,12 +273,7 @@ function TeacherProfile() {
       return true;
     } catch (err) {
       console.error('Save error:', err);
-      // Fallback for storage quota
-      if (err.name === 'QuotaExceededError') {
-        alert("Storage is full! Please delete some old records to save new ones.");
-      } else {
-        setSaveStatus({ text: 'Failed to save attendance.', type: 'error' });
-      }
+      setSaveStatus({ text: 'Failed to save attendance: ' + err.message, type: 'error' });
       return false;
     }
   };
@@ -935,11 +938,9 @@ function TeacherProfile() {
             </div>
             
             {(() => {
-              const allRecords = JSON.parse(localStorage.getItem('attendanceRecords')) || [];
-              const teacherHistory = allRecords
-                .filter(r => r.teacherId === teacher.id)
+              const teacherHistory = attendanceRecords
                 .filter(r => historySemesterFilter === 'All' || r.semester === historySemesterFilter)
-                .sort((a,b) => b.id - a.id);
+                .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
 
               if (historySemesterFilter === '') {
                 return (
@@ -1059,7 +1060,7 @@ function TeacherProfile() {
                       <h4 style={{ color: '#2e7d32', borderBottom: '2px solid #e8f5e9', paddingBottom: '8px', marginBottom: '15px' }}>Present Students</h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {studentsInRecord.filter(id => selectedHistory.attendance[id] === 'Present').map(id => {
-                          const s = students.find(std => std.id === parseInt(id));
+                          const s = students.find(std => (std._id || std.id)?.toString() === id.toString());
                           return s ? (
                             <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f9f9f9', padding: '10px', borderRadius: '8px' }}>
                               <img src={s.profilePhoto || '/IMAGES/default-avatar.png'} style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} alt="S" />
@@ -1076,7 +1077,7 @@ function TeacherProfile() {
                       <h4 style={{ color: '#c62828', borderBottom: '2px solid #ffebee', paddingBottom: '8px', marginBottom: '15px' }}>Absent Students</h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {studentsInRecord.filter(id => selectedHistory.attendance[id] === 'Absent').map(id => {
-                          const s = students.find(std => std.id === parseInt(id));
+                          const s = students.find(std => (std._id || std.id)?.toString() === id.toString());
                           return s ? (
                             <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f9f9f9', padding: '10px', borderRadius: '8px' }}>
                               <img src={s.profilePhoto || '/IMAGES/default-avatar.png'} style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} alt="S" />
