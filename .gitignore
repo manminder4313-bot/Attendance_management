@@ -25,5 +25,5 @@ lerna-debug.log*
 *.sw?
 
 # Project specifics
-UNIVERTY_ATTENDENCE/react-frontend/node_modules/
-UNIVERTY_ATTENDENCE/react-frontend/dist/
+UNIVERSITY_ATTENDANCE/react-frontend/node_modules/
+UNIVERSITY_ATTENDANCE/react-frontend/dist/
