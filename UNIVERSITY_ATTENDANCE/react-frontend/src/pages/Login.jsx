@@ -61,32 +61,25 @@ function Login() {
     setErrorMsg('');
     
     try {
-      const response = await fetch('https://attendance-management-backend-do1l.onrender.com', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, password: pwd })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.type === 'admin') {
-          sessionStorage.setItem('isAdminLoggedIn', 'true');
-          sessionStorage.setItem('loggedInAdmin', JSON.stringify(data.user));
-          navigate('/admin');
-        } else if (data.type === 'teacher') {
-          sessionStorage.setItem('loggedInTeacher', JSON.stringify(data.user));
-          navigate('/teacher-profile');
-        } else if (data.type === 'department') {
-          sessionStorage.setItem('isDepartmentLoggedIn', 'true');
-          sessionStorage.setItem('loggedInDepartment', JSON.stringify(data.user));
-          navigate('/admin');
-        }
-      } else {
-        setErrorMsg('Invalid credentials. Please check your ID and Password.');
+      const data = await api.login(id, pwd);
+      
+      if (data.type === 'admin') {
+        sessionStorage.setItem('isAdminLoggedIn', 'true');
+        sessionStorage.setItem('loggedInAdmin', JSON.stringify(data.user));
+        navigate('/admin');
+      } else if (data.type === 'teacher') {
+        sessionStorage.setItem('loggedInTeacher', JSON.stringify(data.user));
+        navigate('/teacher-profile');
+      } else if (data.type === 'department') {
+        sessionStorage.setItem('isDepartmentLoggedIn', 'true');
+        sessionStorage.setItem('loggedInDepartment', JSON.stringify(data.user));
+        navigate('/admin');
       }
     } catch (err) {
       console.error('Login error:', err);
-      setErrorMsg('Server error. Please make sure the backend is running.');
+      setErrorMsg(err.message === 'API Error' || err.message === 'Failed to fetch' 
+        ? 'Server error. Please make sure the backend is running.' 
+        : err.message || 'Invalid credentials. Please check your ID and Password.');
     }
   };
 

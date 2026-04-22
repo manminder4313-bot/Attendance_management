@@ -1,4 +1,6 @@
-const API_BASE_URL = 'https://attendance-management-backend-do1l.onrender.com';
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:5000/api'
+  : 'https://attendance-management-backend-do1l.onrender.com/api';
 
 const api = {
   // Generic fetch wrapper
@@ -9,12 +11,26 @@ const api = {
       },
       ...options,
     });
+    
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'API Error');
+      // Try to get error message from response
+      let errorMsg = 'API Error';
+      try {
+        const error = await response.json();
+        errorMsg = error.message || errorMsg;
+      } catch (e) {
+        // Fallback if response is not JSON
+      }
+      throw new Error(errorMsg);
     }
     return response.json();
   },
+
+  // Auth
+  login: (id, password) => api.fetch('/login', { 
+    method: 'POST', 
+    body: JSON.stringify({ id, password }) 
+  }),
 
   // Admins
   admins: {
