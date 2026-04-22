@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 function StudentFaceUpload() {
   const [rollNo, setRollNo] = useState('');
@@ -9,11 +10,26 @@ function StudentFaceUpload() {
   const [loading, setLoading] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const qRoll = searchParams.get('rollNo');
+    if (qRoll) {
+      setRollNo(qRoll);
+      // Auto-trigger finding the student
+      const students = JSON.parse(localStorage.getItem('studentSubmissions')) || [];
+      const found = students.find(s => s.enrollmentNumber === qRoll);
+      if (found) {
+        setStudent(found);
+        setStatus({ text: `Identity Verified: ${found.fullName}`, type: 'success' });
+      }
+    }
+  }, [searchParams]);
 
   const findStudent = () => {
     if (!rollNo) return;
-    const students = JSON.parse(localStorage.getItem('studentSubmissions')) || [];
-    const found = students.find(s => s.enrollmentNumber === rollNo);
+    const studentsList = JSON.parse(localStorage.getItem('studentSubmissions')) || [];
+    const found = studentsList.find(s => s.enrollmentNumber === rollNo);
     if (found) {
       setStudent(found);
       setStatus({ text: `Student found: ${found.fullName}`, type: 'success' });
@@ -25,27 +41,71 @@ function StudentFaceUpload() {
 
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: 400, height: 400, facingMode: 'user' } 
-      });
+      setStatus({ text: 'Initializing Camera...', type: 'info' });
+      
+      // Robust constraints for better compatibility
+      const constraints = {
+        video: { 
+          width: { ideal: 640 }, 
+          height: { ideal: 640 }, 
+          facingMode: 'user' 
+        }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
       setIsCameraOpen(true);
       setCapturedImage(null);
+      setStatus({ text: '', type: '' });
+      
+      // We'll use a small timeout to ensure the video element is rendered before attaching
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(e => console.error("Video play error:", e));
+        }
+      }, 100);
     } catch (err) {
-      alert("Camera error: " + err.message);
+      console.error("Camera access error:", err);
+      let errorMsg = "Could not access camera.";
+      if (err.name === 'NotAllowedError') errorMsg = "Camera permission denied!";
+      else if (err.name === 'NotFoundError') errorMsg = "No camera found on this device.";
+      else errorMsg += " " + err.message;
+      
+      alert(errorMsg);
+      setStatus({ text: errorMsg, type: 'error' });
     }
   };
 
   const capturePhoto = () => {
+    if (!videoRef.current) return;
+    
+    const video = videoRef.current;
     const canvas = document.createElement('canvas');
-    canvas.width = 400;
-    canvas.height = 400;
+    
+    // Capture at a high but manageable resolution
+    const size = 600;
+    canvas.width = size;
+    canvas.height = size;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(videoRef.current, 0, 0, 400, 400);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    
+    // Calculate square crop from center
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+    const minDim = Math.min(videoWidth, videoHeight);
+    const sx = (videoWidth - minDim) / 2;
+    const sy = (videoHeight - minDim) / 2;
+    
+    // Mirror the capture to match the preview
+    ctx.translate(size, 0);
+    ctx.scale(-1, 1);
+    
+    ctx.drawImage(video, sx, sy, minDim, minDim, 0, 0, size, size);
+    
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.7); // 0.7 quality saves space
     setCapturedImage(dataUrl);
     stopCamera();
+    setStatus({ text: 'Photo captured! Ready for enrollment.', type: 'success' });
   };
 
   const stopCamera = () => {
@@ -58,17 +118,48 @@ function StudentFaceUpload() {
   const handleUpload = () => {
     if (!capturedImage || !student) return;
     setLoading(true);
+    setStatus({ text: 'Securing student data...', type: 'info' });
 
     setTimeout(() => {
-      const students = JSON.parse(localStorage.getItem('studentSubmissions')) || [];
-      const updated = students.map(s => s.id === student.id ? { ...s, profilePhoto: capturedImage } : s);
-      localStorage.setItem('studentSubmissions', JSON.stringify(updated));
-      
-      setLoading(false);
-      setStatus({ text: 'Face identification photo uploaded successfully!', type: 'success' });
-      setCapturedImage(null);
-      setStudent(null);
-      setRollNo('');
+      try {
+        const studentsList = JSON.parse(localStorage.getItem('studentSubmissions')) || [];
+        
+        // Use a more robust match (ID or Enrollment Number)
+        const studentIndex = studentsList.findIndex(s => 
+          String(s.id) === String(student.id) || 
+          s.enrollmentNumber === student.enrollmentNumber
+        );
+
+        if (studentIndex !== -1) {
+          // Update the specific student in the list
+          studentsList[studentIndex] = {
+            ...studentsList[studentIndex],
+            enrolledFace: capturedImage,
+            lastEnrollmentUpdate: new Date().toISOString()
+          };
+
+          localStorage.setItem('studentSubmissions', JSON.stringify(studentsList));
+          
+          setLoading(false);
+          setStatus({ text: `Success! ${student.fullName}'s face profile is now active.`, type: 'success' });
+          
+          // Clear states after a short delay
+          setTimeout(() => {
+            setCapturedImage(null);
+            setStudent(null);
+            setRollNo('');
+          }, 3000);
+        } else {
+          throw new Error("Student record was moved or deleted.");
+        }
+      } catch (err) {
+        console.error('Upload Error:', err);
+        setLoading(false);
+        const errorMsg = err.name === 'QuotaExceededError' 
+          ? "Storage full! Please tell your teacher to clear old records." 
+          : "Update failed: " + err.message;
+        setStatus({ text: errorMsg, type: 'error' });
+      }
     }, 1500);
   };
 
@@ -160,7 +251,13 @@ function StudentFaceUpload() {
               position: 'relative'
             }}>
               {isCameraOpen ? (
-                <video ref={videoRef} autoPlay style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  playsInline
+                  muted
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} 
+                />
               ) : capturedImage ? (
                 <img src={capturedImage} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Captured" />
               ) : (

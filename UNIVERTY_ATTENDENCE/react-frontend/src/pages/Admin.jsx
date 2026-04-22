@@ -689,7 +689,8 @@ function Admin() {
                   <th style={thStyle}>Roll No</th>
                   <th style={thStyle}>Attendance %</th>
                   <th style={thStyle}>Detailed Report</th>
-                  <th style={thStyle}>Photo</th>
+                  <th style={thStyle}>Reg. Photo</th>
+                  <th style={thStyle}>Enrolled Face</th>
                 </tr>
               </thead>
               <tbody>
@@ -734,6 +735,13 @@ function Admin() {
                           ✎
                         </div>
                       </div>
+                    </td>
+                    <td style={tdStyle}>
+                      {s.enrolledFace ? (
+                        <img src={s.enrolledFace} alt="Enrolled" className="profile-thumb" style={{ border: '2px solid #27ae60' }} />
+                      ) : (
+                        <div className="profile-thumb" style={{ background: '#fff3f3', border: '1px dashed #e74c3c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#e74c3c' }}>Missing</div>
+                      )}
                     </td>
                   </tr>
                 ))}

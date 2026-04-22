@@ -16,6 +16,7 @@ function TeacherProfile() {
   const [historySemesterFilter, setHistorySemesterFilter] = useState(''); // New history filter state
   const [selectedSession, setSelectedSession] = useState('Lecture 1'); // Session selection state
   const [showPdfModal, setShowPdfModal] = useState(false);
+  const [targetRollNo, setTargetRollNo] = useState(''); // State for custom enrollment link
   
   // Smart Attendance States
   const [markingMode, setMarkingMode] = useState('manual'); // 'manual' or 'smart'
@@ -161,8 +162,8 @@ function TeacherProfile() {
         if (Math.random() > 0.2) {
           detectedIds.push(student.id);
           setLastDetectedStudent(student.fullName);
-          setLastDetectedPhoto(student.profilePhoto || '/IMAGES/default-avatar.png');
-          setDetectionLog(prev => [`[✔] Match: ${student.fullName}`, ...prev.slice(0, 4)]);
+          setLastDetectedPhoto(student.enrolledFace || student.profilePhoto || '/IMAGES/default-avatar.png');
+          setDetectionLog(prev => [`✓ Detected: ${student.fullName}`, ...prev.slice(0, 5)]);
         } else {
           setDetectionLog(prev => [`[!] No Match for ID: ${student.enrollmentNumber.slice(-4)}`, ...prev.slice(0, 4)]);
         }
@@ -496,7 +497,7 @@ function TeacherProfile() {
           My Profile
         </button>
         <button 
-          onClick={() => { setActiveTab('students'); setSemesterFilter(''); }} 
+          onClick={() => { setActiveTab('students'); setSemesterFilter(''); loadSubmissions(teacher); }} 
           style={{ 
             padding: '12px 25px', border: 'none', background: 'none', 
             borderBottom: activeTab === 'students' ? '3px solid #8a2c20' : 'none', 
@@ -507,7 +508,7 @@ function TeacherProfile() {
           My Students
         </button>
         <button 
-          onClick={() => { setActiveTab('attendance'); setSemesterFilter(''); }} 
+          onClick={() => { setActiveTab('attendance'); setSemesterFilter(''); loadSubmissions(teacher); }} 
           style={{ 
             padding: '12px 25px', border: 'none', background: 'none', 
             borderBottom: activeTab === 'attendance' ? '3px solid #8a2c20' : 'none', 
@@ -582,12 +583,14 @@ function TeacherProfile() {
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: '#f8f9fa', textTransform: 'uppercase', fontSize: '13px' }}>
-                    <th style={thStyle}>Photo</th>
+                    <th style={thStyle}>Reg. Photo</th>
+                    <th style={thStyle}>Enrolled Face</th>
                     <th style={thStyle}>Roll No</th>
                     <th style={thStyle}>Full Name</th>
                     <th style={thStyle}>Course</th>
                     <th style={thStyle}>Semester</th>
                     <th style={thStyle}>Email</th>
+                    <th style={thStyle}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -595,11 +598,16 @@ function TeacherProfile() {
                     <tr key={s.id} style={{ borderBottom: '1px solid #eee' }}>
                       <td style={tdStyle}>
                         {s.profilePhoto ? (
-                          <img src={s.profilePhoto} alt="S" style={{ width: '35px', height: '35px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #ddd' }} />
+                          <img src={s.profilePhoto} alt="Reg" style={{ width: '35px', height: '35px', borderRadius: '4px', objectFit: 'cover', border: '1px solid #ddd' }} />
                         ) : (
-                          <div style={{ width: '35px', height: '35px', borderRadius: '50%', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', color: '#888' }}>
-                            {s.fullName.charAt(0).toUpperCase()}
-                          </div>
+                          <div style={{ width: '35px', height: '35px', borderRadius: '4px', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#999' }}>N/A</div>
+                        )}
+                      </td>
+                      <td style={tdStyle}>
+                        {s.enrolledFace ? (
+                          <img src={s.enrolledFace} alt="Enrolled" style={{ width: '35px', height: '35px', borderRadius: '4px', objectFit: 'cover', border: '2px solid #27ae60' }} />
+                        ) : (
+                          <div style={{ width: '35px', height: '35px', borderRadius: '4px', background: '#fff3f3', border: '1px dashed #e74c3c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#e74c3c' }}>Missing</div>
                         )}
                       </td>
                       <td style={tdStyle}>{s.enrollmentNumber}</td>
@@ -607,6 +615,19 @@ function TeacherProfile() {
                       <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{s.course}</span></td>
                       <td style={tdStyle}>{s.semester}</td>
                       <td style={tdStyle}>{s.email}</td>
+                      <td style={tdStyle}>
+                        <button 
+                          onClick={() => {
+                            const url = `${window.location.origin}/upload-face?rollNo=${s.enrollmentNumber}`;
+                            navigator.clipboard.writeText(url);
+                            setSaveStatus({ text: `Link for ${s.fullName} copied!`, type: 'success' });
+                            setTimeout(() => setSaveStatus({ text: '', type: '' }), 3000);
+                          }}
+                          style={{ background: '#8a2c20', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                        >
+                          🔗 Copy Link
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -643,22 +664,34 @@ function TeacherProfile() {
                   >
                     📸 Smart Attendance
                   </button>
-                  <button 
-                    onClick={() => {
-                        const url = `${window.location.origin}/upload-face`;
-                        navigator.clipboard.writeText(url);
-                        setSaveStatus({ text: 'Face Enrollment Link copied to clipboard!', type: 'success' });
-                        setTimeout(() => setSaveStatus({ text: '', type: '' }), 3000);
-                    }}
-                    style={{ 
-                      padding: '6px 15px', borderRadius: '20px', border: '1px solid #8a2c20', cursor: 'pointer',
-                      background: 'white',
-                      color: '#8a2c20',
-                      fontSize: '13px', fontWeight: 'bold'
-                    }}
-                  >
-                    🔗 Copy Enrollment Link
-                  </button>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px' }}>
+                    <div style={{ display: 'flex', background: 'white', border: '1px solid #ddd', borderRadius: '25px', padding: '2px 5px 2px 15px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', color: '#888', marginRight: '5px' }}>Roll No:</span>
+                      <input 
+                        type="text" 
+                        placeholder="Optional" 
+                        value={targetRollNo}
+                        onChange={(e) => setTargetRollNo(e.target.value)}
+                        style={{ border: 'none', outline: 'none', width: '80px', fontSize: '13px', fontWeight: 'bold', color: '#8a2c20' }}
+                      />
+                      <button 
+                        onClick={() => {
+                            const url = `${window.location.origin}/upload-face${targetRollNo ? `?rollNo=${targetRollNo}` : ''}`;
+                            navigator.clipboard.writeText(url);
+                            setSaveStatus({ text: targetRollNo ? `Link for ${targetRollNo} copied!` : 'General Enrollment Link copied!', type: 'success' });
+                            setTimeout(() => setSaveStatus({ text: '', type: '' }), 3000);
+                        }}
+                        style={{ 
+                          padding: '6px 15px', borderRadius: '20px', border: 'none', cursor: 'pointer',
+                          background: '#8a2c20',
+                          color: 'white',
+                          fontSize: '13px', fontWeight: 'bold', marginLeft: '5px'
+                        }}
+                      >
+                        🔗 Copy Enrollment Link
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
               
@@ -776,6 +809,8 @@ function TeacherProfile() {
                       <video 
                         ref={videoRef} 
                         autoPlay 
+                        playsInline
+                        muted
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                       />
                       
