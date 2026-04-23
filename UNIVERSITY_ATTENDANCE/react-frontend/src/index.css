@@ -394,6 +394,7 @@ header {
     font-size: 0.8rem;
     transition: transform 0.3s ease;
     margin-top: 2px;
+    flex-shrink: 0;
 }
 
 .link-list a:hover {
@@ -714,21 +715,26 @@ header {
     .hero-text { padding-right: 0; margin-bottom: 40px; }
     .hero-text p { border-left: none; padding-left: 0; }
     .hero-text h1 span::after { left: 50%; transform: translateX(-50%); }
-    .home-container {
-        grid-template-columns: 1fr;
-        padding: 20px;
-    }
     .carousel {
-        height: 250px;
+        height: 220px;
+    }
+    .marquee-container {
+        padding: 5px 0;
+    }
+    .marquee-item {
+        font-size: 12px;
     }
 }
 
-@media (max-width: 1150px) and (min-width: 901px) {
+@media (max-width: 1150px) {
     .home-container {
-        grid-template-columns: 1fr 1fr;
+        display: flex;
+        flex-direction: column;
+        padding: 15px;
+        gap: 20px;
     }
-    .home-container > .home-column:nth-child(3) {
-        grid-column: span 2;
+    .home-container > .center-column {
+        order: -1; /* Forces the Carousel to show first */
     }
 }
 
