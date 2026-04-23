@@ -1,6 +1,13 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 function Navbar() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
   return (
     <header>
       <div className="navbar">
@@ -18,9 +25,14 @@ function Navbar() {
           <strong>Contact Us:</strong> +91-1644-239205<br />
           <strong>Email:</strong> info@mrsptu.ac.in
         </div>
+        <div className={`hamburger ${isMobileMenuOpen ? 'open' : ''}`} onClick={toggleMobileMenu}>
+          <div className="bar1"></div>
+          <div className="bar2"></div>
+          <div className="bar3"></div>
+        </div>
       </div>
       <nav className="navbar2">
-        <div className="nav-links">
+        <div className={`nav-links ${isMobileMenuOpen ? 'active' : ''}`}>
           <Link to="/">Home</Link>
           <div className="dropdown">
             <span>Academics ▾</span>
@@ -115,7 +127,7 @@ function Navbar() {
           <Link to="#">Facilities</Link>
           <a href="http://alumni.mrsptu.ac.in/" target="_blank" rel="noopener noreferrer">Alumni</a>
           <Link to="/student-services">Student Services</Link>
-          <Link to="/Attendance_Management">Attendance Management</Link>
+          <Link to="/Attendance_Management">Admin & Teachers Login</Link>
         </div>
       </nav>
     </header>

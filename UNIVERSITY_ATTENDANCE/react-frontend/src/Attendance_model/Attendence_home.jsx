@@ -8,8 +8,7 @@ function Attendence_home() {
       
       {/* Header Section */}
       <div style={{ padding: '2rem', paddingTop: '10px', textAlign: 'center', color: '#333' }}>
-        <h1 style={{ color: '#8A1538', marginBottom: '1rem', fontSize: '2.5rem', fontWeight: 'bold' }}>Attendance Management</h1>
-        <p style={{ fontSize: '1.2rem', color: '#666' }}>Welcome to the Attendance Management System.</p>
+        <h1 style={{ color: '#8A1538', marginBottom: '1rem', fontSize: '2.5rem', fontWeight: 'bold' }}></h1>
       </div>
       
       {/* Main Content Layout */}

@@ -86,7 +86,7 @@ function Login() {
   return (
     <div className="auth-container">
       <div className="form-box">
-        <h1>Department Login</h1>
+        <h1>Admin Login</h1>
         <p className="subtitle">Admin & Teachers Portal</p>
         {errorMsg && <div className="message error">{errorMsg}</div>}
         <form onSubmit={handleLogin}>
