@@ -13,7 +13,6 @@ const api = {
     });
     
     if (!response.ok) {
-      // Try to get error message from response
       let errorMsg = 'API Error';
       try {
         const error = await response.json();

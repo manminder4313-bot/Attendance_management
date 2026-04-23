@@ -16,55 +16,73 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
+// ✅ Middleware
 app.use(cors());
-app.use(bodyParser.json({ limit: '50mb' })); // Increased limit for face images
+app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
-// Root health check
+// ✅ Check ENV variable
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://manminder_2002:Maan%404313@ac-26w7ddf-shard-00-00.1htdj3m.mongodb.net:27017,ac-26w7ddf-shard-00-01.1htdj3m.mongodb.net:27017,ac-26w7ddf-shard-00-02.1htdj3m.mongodb.net:27017/attendanceDB?ssl=true&authSource=admin&retryWrites=true&w=majority';
+
+if (!MONGODB_URI) {
+  console.error("❌ MONGODB_URI not set in environment variables");
+  process.exit(1);
+}
+
+// ✅ Health routes
 app.get('/', (req, res) => {
   res.send('Attendance Management System API is Running');
 });
 
 app.get('/api/health', (req, res) => {
   const status = mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected';
-  res.json({ status, database: status });
+  res.json({ status });
 });
 
-// MongoDB Connection
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/attendance_system';
+// =======================
+// 🚀 CONNECT DB + START SERVER
+// =======================
 
 console.log('⏳ Connecting to MongoDB...');
+
 mongoose.connect(MONGODB_URI, {
-  serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+  serverSelectionTimeoutMS: 5000,
 })
-  .then(async () => {
-    console.log('✅ Connected to MongoDB');
-    // Seed default admin if none exists
-    try {
-      const adminCount = await Admin.countDocuments();
-      if (adminCount === 0) {
-        const defaultAdmin = new Admin({
-          email: 'admin@mrsptu.ac.in',
-          password: 'admin@1234',
-          role: 'admin'
-        });
-        await defaultAdmin.save();
-        console.log('👤 Default admin created: admin@mrsptu.ac.in / admin@1234');
-      }
-    } catch (seedErr) {
-      console.error('⚠️ Seeding Error:', seedErr.message);
-    }
-  })
-  .catch((err) => {
-    console.error('❌ MongoDB Connection Error:', err.message);
-    console.error('👉 Make sure you have set MONGODB_URI in your environment variables.');
+.then(async () => {
+  console.log('✅ MongoDB Connected');
+
+  // ✅ Start server ONLY after DB connects
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
   });
 
+  // ✅ Seed default admin
+  try {
+    const adminCount = await Admin.countDocuments();
+    if (adminCount === 0) {
+      const defaultAdmin = new Admin({
+        email: 'admin@mrsptu.ac.in',
+        password: 'admin@1234',
+        role: 'admin'
+      });
+      await defaultAdmin.save();
+      console.log('👤 Default admin created');
+    }
+  } catch (err) {
+    console.error('⚠️ Seeding Error:', err.message);
+  }
 
-// --- API ROUTES ---
+})
+.catch((err) => {
+  console.error('❌ MongoDB Connection Error:', err.message);
+  process.exit(1);
+});
 
-// 1. ADMIN ROUTES
+// =======================
+// 📌 API ROUTES
+// =======================
+
+// ADMIN
 app.get('/api/admins', async (req, res) => {
   try {
     const admins = await Admin.find();
@@ -80,11 +98,12 @@ app.post('/api/admins', async (req, res) => {
     await admin.save();
     res.status(201).json(admin);
   } catch (err) {
+    console.error('Admin Registration Error:', err.message);
     res.status(400).json({ message: err.message });
   }
 });
 
-// 2. TEACHER ROUTES
+// TEACHERS
 app.get('/api/teachers', async (req, res) => {
   try {
     const teachers = await Teacher.find();
@@ -104,7 +123,7 @@ app.post('/api/teachers', async (req, res) => {
   }
 });
 
-// 3. STUDENT ROUTES
+// STUDENTS
 app.get('/api/students', async (req, res) => {
   try {
     const students = await Student.find();
@@ -133,7 +152,7 @@ app.put('/api/students/:id', async (req, res) => {
   }
 });
 
-// 4. DEPARTMENT ROUTES
+// DEPARTMENTS
 app.get('/api/departments', async (req, res) => {
   try {
     const departments = await Department.find();
@@ -153,7 +172,7 @@ app.post('/api/departments', async (req, res) => {
   }
 });
 
-// 5. ATTENDANCE ROUTES
+// ATTENDANCE
 app.get('/api/attendance', async (req, res) => {
   try {
     const attendance = await Attendance.find();
@@ -173,76 +192,35 @@ app.post('/api/attendance', async (req, res) => {
   }
 });
 
-// Bulk sync endpoint for migration
-app.post('/api/sync', async (req, res) => {
-  const { type, data } = req.body;
-  if (!data || !Array.isArray(data)) return res.status(400).json({ message: 'Invalid data' });
-
-  try {
-    let results = [];
-    for (let item of data) {
-      try {
-        let query = {};
-        if (type === 'admins' || type === 'teachers') query = { email: item.email };
-        else if (type === 'students') query = { enrollmentNumber: item.enrollmentNumber };
-        else if (type === 'departments') query = { name: item.name };
-        else if (type === 'attendance') query = { date: item.date, teacherId: item.teacherId, subject: item.subject, session: item.session };
-
-        let result;
-        switch (type) {
-          case 'admins': result = await Admin.findOneAndUpdate(query, item, { upsert: true, new: true }); break;
-          case 'teachers': result = await Teacher.findOneAndUpdate(query, item, { upsert: true, new: true }); break;
-          case 'students': result = await Student.findOneAndUpdate(query, item, { upsert: true, new: true }); break;
-          case 'departments': result = await Department.findOneAndUpdate(query, item, { upsert: true, new: true }); break;
-          case 'attendance': result = await Attendance.findOneAndUpdate(query, item, { upsert: true, new: true }); break;
-        }
-        results.push(result);
-      } catch (innerErr) {
-        console.warn(`⚠️ Skipped 1 ${type} record due to error:`, innerErr.message);
-      }
-    }
-    res.status(201).json({ message: `Synced ${results.length} records successfully` });
-  } catch (err) {
-    console.error('❌ Sync Error:', err);
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// 6. LOGIN ENDPOINT
+// LOGIN
 app.post('/api/login', async (req, res) => {
   const { id, password } = req.body;
+
   try {
-    // Check Admin (id field or email)
-    let user = await Admin.findOne({ 
-      $or: [{ email: id }, { id: id }], 
-      password 
+    let user = await Admin.findOne({
+      $or: [{ email: id }, { id: id }],
+      password
     });
     if (user) return res.json({ type: 'admin', user });
 
-    // Check Teacher (username/email field)
-    user = await Teacher.findOne({ 
-      $or: [{ email: id }, { username: id }, { fullName: id }], 
-      password 
+    user = await Teacher.findOne({
+      $or: [{ email: id }, { username: id }, { fullName: id }],
+      password
     });
     if (user) return res.json({ type: 'teacher', user });
 
-    // Check Student
-    user = await Student.findOne({ 
-      $or: [{ email: id }, { enrollmentNumber: id }, { username: id }], 
-      password 
+    user = await Student.findOne({
+      $or: [{ email: id }, { enrollmentNumber: id }, { username: id }],
+      password
     });
     if (user) return res.json({ type: 'student', user });
 
-    // Check Department
-    user = await Department.findOne({ name: id, password }); 
+    user = await Department.findOne({ name: id, password });
     if (user) return res.json({ type: 'department', user });
 
     res.status(401).json({ message: 'Invalid credentials' });
+
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
