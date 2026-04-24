@@ -45,7 +45,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // ✅ Wildcard route to serve React app for any non-API route
-app.get('*', (req, res) => {
+app.get('(.*)', (req, res) => {
   if (!req.path.startsWith('/api')) {
     res.sendFile(path.join(distPath, 'index.html'));
   } else {
