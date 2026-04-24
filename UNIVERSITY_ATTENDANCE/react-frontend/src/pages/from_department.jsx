@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 function FormDepartment() {
   const [formData, setFormData] = useState({
@@ -44,29 +45,29 @@ function FormDepartment() {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
-    setTimeout(() => {
+    try {
       const username = (formData.department.replace(/\s+/g, '').toLowerCase() + formData.phone.slice(-4)).replace(/[^a-z0-9]/g, '');
       const password = Math.random().toString(36).slice(-8);
 
       const departmentData = {
         ...formData,
-        id: Date.now(),
         username,
-        password,
-        submissionDate: new Date().toLocaleString()
+        password
       };
 
-      let submissions = JSON.parse(localStorage.getItem('departmentSubmissions')) || [];
-      submissions.push(departmentData);
-      localStorage.setItem('departmentSubmissions', JSON.stringify(submissions));
+      await api.departments.create(departmentData);
 
       alert(`Success! Department account created for ${formData.department}.\n\n[ADMIN BACKUP]\nUsername: ${username}\nPassword: ${password}`);
       navigate('/admin');
-    }, 1000);
+    } catch (err) {
+      alert('Error saving department: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

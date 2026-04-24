@@ -76,7 +76,16 @@ function FormStudent() {
   };
 
   return (
-    <div className="auth-container" style={{ background: 'url("/IMAGES/mrsptu.webp") cover center no-repeat', attachment: 'fixed' }}>
+    <div className="auth-container" style={{ 
+      backgroundImage: 'url("/IMAGES/mrsptu.webp")', 
+      backgroundSize: 'cover', 
+      backgroundPosition: 'center', 
+      backgroundRepeat: 'no-repeat', 
+      backgroundAttachment: 'fixed',
+      minHeight: '100vh',
+      width: '100%',
+      padding: '40px 20px'
+    }}>
       <div className="form-box" style={{ maxWidth: '900px', background: 'rgba(255, 255, 255, 0.95)' }}>
         <h1>Student Registration Form</h1>
         <p style={{ textAlign: 'center', marginBottom: '30px', color: '#666' }}>Please fill all required information carefully</p>
@@ -145,17 +154,16 @@ function FormStudent() {
               </select>
             </div>
             <div className="form-group" style={{ flex: 1 }}>
-              <label>Semester</label>
-              <select name="semester" onChange={handleChange}>
-                <option>Select semester</option>
-                <option>1st Semester</option>
-                <option>2nd Semester</option>
-                <option>3rd Semester</option>
-                <option>4th Semester</option>
-                <option>5th Semester</option>
-                <option>6th Semester</option>
-                <option>7th Semester</option>
-                <option>8th Semester</option>
+              <label>Batch Year</label>
+              <select 
+                name="semester" 
+                onChange={handleChange}
+                style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', background: 'white' }}
+              >
+                <option value="">Select Batch Year</option>
+                {Array.from({ length: new Date().getFullYear() - 2018 + 1 }, (_, i) => 2018 + i).map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
               </select>
             </div>
           </div>

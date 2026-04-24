@@ -7,7 +7,7 @@ function Login() {
   const [pwd, setPwd] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
-  
+
   // Reset Password states
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetData, setResetData] = useState({ id: '', email: '', newPwd: '', confirmPwd: '' });
@@ -45,7 +45,7 @@ function Login() {
       ['teacherSubmissions', 'studentSubmissions', 'attendanceRecords', 'departmentSubmissions', 'adminCredentials'].forEach(key => {
         localStorage.removeItem(key);
       });
-      
+
       setHasLocalData(false);
       alert('Data successfully migrated to MongoDB!');
     } catch (err) {
@@ -59,10 +59,10 @@ function Login() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setErrorMsg('');
-    
+
     try {
       const data = await api.login(id, pwd);
-      
+
       if (data.type === 'admin') {
         sessionStorage.setItem('isAdminLoggedIn', 'true');
         sessionStorage.setItem('loggedInAdmin', JSON.stringify(data.user));
@@ -77,8 +77,8 @@ function Login() {
       }
     } catch (err) {
       console.error('Login error:', err);
-      setErrorMsg(err.message === 'API Error' || err.message === 'Failed to fetch' 
-        ? 'Server error. Please make sure the backend is running.' 
+      setErrorMsg(err.message === 'API Error' || err.message === 'Failed to fetch'
+        ? 'Server error. Please make sure the backend is running.'
         : err.message || 'Invalid credentials. Please check your ID and Password.');
     }
   };
@@ -92,22 +92,22 @@ function Login() {
         <form onSubmit={handleLogin}>
           <div className="form-group">
             <label>User ID / Username</label>
-            <input 
-              type="text" 
-              placeholder="Enter User ID or Username" 
+            <input
+              type="text"
+              placeholder="Enter User ID or Username"
               value={id}
               onChange={e => setId(e.target.value)}
-              required 
+              required
             />
           </div>
           <div className="form-group">
             <label>Password</label>
-            <input 
-              type="password" 
-              placeholder="Enter Password" 
+            <input
+              type="password"
+              placeholder="Enter Password"
               value={pwd}
               onChange={e => setPwd(e.target.value)}
-              required 
+              required
             />
           </div>
           <button type="submit" className="btn-primary">Login</button>
@@ -118,8 +118,8 @@ function Login() {
             <p style={{ fontSize: '12px', marginBottom: '10px', color: '#ff6b6b' }}>
               <strong>Legacy Data Found!</strong> Click below to migrate your local data to MongoDB.
             </p>
-            <button 
-              onClick={handleSync} 
+            <button
+              onClick={handleSync}
               disabled={isSyncing}
               className="btn-secondary"
               style={{ width: '100%', padding: '10px', cursor: 'pointer' }}

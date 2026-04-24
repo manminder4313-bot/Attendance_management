@@ -64,7 +64,12 @@ function TeacherProfile() {
   const loadHistory = async (teacherData) => {
     try {
       const allRecords = await api.attendance.getAll();
-      const teacherHistory = allRecords.filter(r => r.teacherId === (teacherData._id || teacherData.id));
+      const teacherHistory = allRecords.filter(r => r.teacherId === (teacherData._id || teacherData.id))
+                                       .map(r => ({ 
+                                         ...r, 
+                                         id: r._id || r.id,
+                                         dateDisplay: r.date ? new Date(r.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'
+                                       }));
       setAttendanceRecords(teacherHistory);
     } catch (err) {
       console.error('Error loading history:', err);
@@ -98,7 +103,7 @@ function TeacherProfile() {
         return course?.toLowerCase().includes(dept?.toLowerCase()) || 
                dept?.toLowerCase().includes(course?.toLowerCase());
       });
-      setStudents(filteredStudents);
+      setStudents(filteredStudents.map(s => ({ ...s, id: s._id || s.id })));
 
       const initialMarks = {};
       filteredStudents.forEach(s => {

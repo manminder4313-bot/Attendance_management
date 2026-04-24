@@ -13,7 +13,7 @@ function FormPage() {
     qualification: '',
     experience: '',
     department: 'Select Department',
-    primarySubject: 'Select subject',
+    primarySubject: 'Select subjects',
     profilePhoto: ''
   });
   const [loading, setLoading] = useState(false);
