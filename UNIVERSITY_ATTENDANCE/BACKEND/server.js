@@ -22,7 +22,7 @@ app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
 // ✅ Check ENV variable
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://manminder_2002:Maan%404313@ac-26w7ddf-shard-00-00.1htdj3m.mongodb.net:27017,ac-26w7ddf-shard-00-01.1htdj3m.mongodb.net:27017,ac-26w7ddf-shard-00-02.1htdj3m.mongodb.net:27017/attendanceDB?ssl=true&authSource=admin&retryWrites=true&w=majority';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://manminder_2002:Maan%404313@ac-26w7ddf-shard-00-00.1htdj3m.mongodb.net:27017,ac-26w7ddf-shard-00-01.1htdj3m.mongodb.net:27017,ac-26w7ddf-shard-00-02.1htdj3m.mongodb.net:27017/userDB?ssl=true&authSource=admin&retryWrites=true&w=majority';
 
 if (!MONGODB_URI) {
   console.error("❌ MONGODB_URI not set in environment variables");
@@ -61,8 +61,12 @@ mongoose.connect(MONGODB_URI, {
     const adminCount = await Admin.countDocuments();
     if (adminCount === 0) {
       const defaultAdmin = new Admin({
-        email: 'admin@mrsptu.ac.in',
+        id: 'Adminmanminder',
+        fullName: 'Manminder Maan',
+        email: 'manminder4313@gmail.com',
         password: 'admin@1234',
+        contact: '9915955319',
+        profilePhoto: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEU…',
         role: 'admin'
       });
       await defaultAdmin.save();
@@ -198,24 +202,27 @@ app.post('/api/login', async (req, res) => {
 
   try {
     let user = await Admin.findOne({
-      $or: [{ email: id }, { id: id }],
+      $or: [{ id: id }, { email: id }],
       password
     });
     if (user) return res.json({ type: 'admin', user });
 
     user = await Teacher.findOne({
-      $or: [{ email: id }, { username: id }, { fullName: id }],
+      $or: [{ username: id }, { email: id }],
       password
     });
     if (user) return res.json({ type: 'teacher', user });
 
     user = await Student.findOne({
-      $or: [{ email: id }, { enrollmentNumber: id }, { username: id }],
+      $or: [{ enrollmentNumber: id }, { username: id }, { email: id }],
       password
     });
     if (user) return res.json({ type: 'student', user });
 
-    user = await Department.findOne({ name: id, password });
+    user = await Department.findOne({
+      $or: [{ username: id }, { email: id }],
+      password
+    });
     if (user) return res.json({ type: 'department', user });
 
     res.status(401).json({ message: 'Invalid credentials' });
