@@ -3,6 +3,11 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import bodyParser from 'body-parser';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Models
 import Admin from './models/Admin.js';
@@ -29,14 +34,23 @@ if (!MONGODB_URI) {
   process.exit(1);
 }
 
-// ✅ Health routes
-app.get('/', (req, res) => {
-  res.send('Attendance Management System API is Running');
-});
+// ✅ Static Files (Serve Frontend)
+const distPath = path.join(__dirname, '../react-frontend/dist');
+app.use(express.static(distPath));
 
+// ✅ Health routes
 app.get('/api/health', (req, res) => {
   const status = mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected';
   res.json({ status });
+});
+
+// ✅ Wildcard route to serve React app for any non-API route
+app.get('*', (req, res) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(distPath, 'index.html'));
+  } else {
+    res.status(404).json({ message: 'API Route Not Found' });
+  }
 });
 
 // =======================
