@@ -78,7 +78,7 @@ function FormDepartment() {
 
         <form onSubmit={handleSubmit}>
           <h2 style={{ borderBottom: '2px solid #eaeaea', color: '#333', paddingBottom: '5px', margin: '25px 0 15px' }}>Head of Department (HOD) Details</h2>
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+          <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
               <label>HOD Full Name</label>
               <input name="headName" type="text" placeholder="Enter full name" onChange={handleChange} required />
@@ -89,7 +89,7 @@ function FormDepartment() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+          <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
               <label>Phone Number</label>
               <input name="phone" type="tel" placeholder="Enter phone number" onChange={handleChange} required />
@@ -110,7 +110,7 @@ function FormDepartment() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+          <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
               <label>Department Logo / HOD Photo</label>
               <input name="profilePhoto" type="file" accept="image/*" onChange={handleChange} />

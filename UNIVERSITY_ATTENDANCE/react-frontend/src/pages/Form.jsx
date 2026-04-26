@@ -19,6 +19,17 @@ function FormPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Check if a Department HOD is logged in
+  const isDepartmentLoggedIn = sessionStorage.getItem('isDepartmentLoggedIn') === 'true';
+  const roleDepartmentData = isDepartmentLoggedIn ? JSON.parse(sessionStorage.getItem('loggedInDepartment')) : null;
+
+  // If HOD is logged in, set their department automatically
+  useState(() => {
+    if (isDepartmentLoggedIn && roleDepartmentData?.department) {
+      setFormData(prev => ({ ...prev, department: roleDepartmentData.department }));
+    }
+  }, []);
+
   const compressImage = (file, callback) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -99,7 +110,7 @@ function FormPage() {
 
         <form onSubmit={handleSubmit}>
           <h2 style={{ borderBottom: '2px solid #eaeaea', color: '#333', paddingBottom: '5px', margin: '25px 0 15px' }}>Personal Information</h2>
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+          <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
               <label>Full Name</label>
               <input name="fullName" type="text" placeholder="Enter full name" onChange={handleChange} required />
@@ -110,7 +121,7 @@ function FormPage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+          <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
               <label>Profile Photo</label>
               <input name="profilePhoto" type="file" accept="image/*" onChange={handleChange} />
@@ -120,7 +131,7 @@ function FormPage() {
             </div>
           </div>
           
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+          <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
               <label>Phone Number</label>
               <input name="phone" type="tel" placeholder="Enter phone number" onChange={handleChange} required />
@@ -141,7 +152,7 @@ function FormPage() {
           </div>
 
           <h2 style={{ borderBottom: '2px solid #eaeaea', color: '#333', paddingBottom: '5px', margin: '25px 0 15px' }}>Professional Information</h2>
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+          <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
               <label>Highest Qualification</label>
               <input name="qualification" type="text" placeholder="e.g. M.Tech, PhD" onChange={handleChange} />
@@ -153,13 +164,22 @@ function FormPage() {
           </div>
           <div className="form-group">
             <label>Department</label>
-            <select name="department" onChange={handleChange}>
+            <select 
+              name="department" 
+              value={formData.department} 
+              onChange={handleChange}
+              disabled={isDepartmentLoggedIn}
+              style={{ background: isDepartmentLoggedIn ? '#f5f5f5' : 'white', cursor: isDepartmentLoggedIn ? 'not-allowed' : 'pointer' }}
+            >
               <option>Select Department</option>
               <option>Mathematics</option>
               <option>Computer Science</option>
               <option>Physics</option>
               <option>Chemistry</option>
               <option>Biology</option>
+              <option>Mechanical Engineering</option>
+              <option>Civil Engineering</option>
+              <option>Electrical Engineering</option>
             </select>
           </div>
           <div className="form-group">

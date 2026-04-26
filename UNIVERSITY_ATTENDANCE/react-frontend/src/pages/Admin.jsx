@@ -70,6 +70,8 @@ function Admin() {
         id: r._id || r.id,
         dateDisplay: r.date ? new Date(r.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'
       })));
+      
+      console.log(`📊 Data Loaded: ${teachers.length} Teachers, ${students.length} Students, ${depts.length} Departments`);
     } catch (err) {
       console.error('Error loading data from MongoDB:', err);
     }
@@ -137,7 +139,7 @@ function Admin() {
     setTimeout(() => memberPhotoInputRef.current.click(), 0);
   };
 
-  const handlePasswordChange = (e) => {
+  const handlePasswordChange = async (e) => {
     e.preventDefault();
     if (newPwd !== confirmPwd) {
       alert("Passwords do not match!");
@@ -150,34 +152,33 @@ function Admin() {
 
     if (isDepartmentLoggedIn) {
       const updated = { ...roleDepartmentData, password: newPwd };
-      saveProfileUpdate(updated, 'department');
+      await saveProfileUpdate(updated, 'department');
     } else if (isAdminLoggedIn) {
       const updated = { ...adminCreds, password: newPwd };
-      saveProfileUpdate(updated, 'admin');
+      await saveProfileUpdate(updated, 'admin');
     }
 
     setShowPwdModal(false);
     setNewPwd('');
     setConfirmPwd('');
-    alert("Password updated successfully!");
   };
 
-  const saveProfileUpdate = (updatedUser, role) => {
-    if (role === 'department') {
-      sessionStorage.setItem('loggedInDepartment', JSON.stringify(updatedUser));
-      const allDepts = JSON.parse(localStorage.getItem('departmentSubmissions')) || [];
-      const updatedList = allDepts.map(d => d.id === updatedUser.id ? updatedUser : d);
-      localStorage.setItem('departmentSubmissions', JSON.stringify(updatedList));
-      setDepartmentSubmissions(updatedList);
-    } else {
-      sessionStorage.setItem('loggedInAdmin', JSON.stringify(updatedUser));
-      let aData = JSON.parse(localStorage.getItem('adminCredentials'));
-      if (!aData) aData = [];
-      else if (!Array.isArray(aData)) aData = [aData];
-
-      const updatedList = aData.map(a => (a.uuid === updatedUser.uuid || a.id === updatedUser.id) ? updatedUser : a);
-      localStorage.setItem('adminCredentials', JSON.stringify(updatedList));
-      setAdminSubmissions(updatedList);
+  const saveProfileUpdate = async (updatedUser, role) => {
+    try {
+      const id = updatedUser._id || updatedUser.id || updatedUser.uuid;
+      if (role === 'department') {
+        await api.departments.update(id, updatedUser);
+        sessionStorage.setItem('loggedInDepartment', JSON.stringify(updatedUser));
+        setDepartmentSubmissions(prev => prev.map(d => (d._id === id || d.id === id) ? updatedUser : d));
+      } else {
+        await api.admins.update(id, updatedUser);
+        sessionStorage.setItem('loggedInAdmin', JSON.stringify(updatedUser));
+        setAdminSubmissions(prev => prev.map(a => (a._id === id || a.id === id || a.uuid === id) ? updatedUser : a));
+      }
+      alert("Password updated successfully in database!");
+    } catch (err) {
+      console.error('Failed to update profile in database:', err);
+      alert(`Failed to update password: ${err.message || 'Server error'}`);
     }
   };
 
@@ -282,9 +283,9 @@ function Admin() {
 
 
   return (
-    <div style={{ padding: '40px', maxWidth: '100%', margin: '0 auto' }}>
+    <div style={{ padding: '20px 4%', maxWidth: '1600px', margin: '0 auto' }}>
       <input type="file" ref={memberPhotoInputRef} style={{ display: 'none' }} accept="image/*" onChange={handleMemberPhotoChange} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+      <div className="admin-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           <div style={{ position: 'relative' }}>
             {isDepartmentLoggedIn && roleDepartmentData?.profilePhoto ? (
@@ -311,7 +312,7 @@ function Admin() {
             ) : null}
           </div>
         </div>
-        <div>
+        <div className="admin-actions">
           <button onClick={() => setShowPwdModal(true)} style={{ background: '#3498db', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', marginRight: '10px' }}>
             Change Password
           </button>
@@ -340,8 +341,8 @@ function Admin() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #eee', marginBottom: '20px', alignItems: 'center', paddingBottom: '10px' }}>
-        <div style={{ display: 'flex' }}>
+      <div className="admin-tabs-container">
+        <div className="admin-tabs">
           <button
             onClick={() => { setActiveTab('teachers'); setSelectedIds([]); setIsDeleteMode(false); }}
             style={{ padding: '10px 20px', border: 'none', background: 'none', borderBottom: activeTab === 'teachers' ? '3px solid var(--primary)' : 'none', color: activeTab === 'teachers' ? 'var(--primary)' : '#666', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>
@@ -375,7 +376,7 @@ function Admin() {
           )}
         </div>
 
-        <div>
+        <div className="admin-filters">
           {activeTab === 'teachers' ? (
             isDepartmentLoggedIn ? (
               <select value={roleDepartmentData?.department} disabled style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none', background: '#f5f5f5', color: '#666' }}>
@@ -395,7 +396,7 @@ function Admin() {
             <select value={courseFilter} onChange={(e) => { setCourseFilter(e.target.value); setSelectedIds([]); }} style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }}>
               <option value="All">All Courses</option>
               {(isDepartmentLoggedIn ? api.departments.getCourses(roleDepartmentData?.department) : [
-                'B.Tech Computer Science', 'B.Tech Mechanical', 'B.Tech Civil', 'B.Tech Electrical', 'BCA', 'MCA'
+                'BSE. Graphic', 'B.Tech Mechanical', 'B.Tech Civil', 'B.Tech Electrical', 'BCA', 'MCA', 'B.A in Computer science'
               ]).map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           ) : null}
@@ -633,7 +634,7 @@ function Admin() {
                   >
                     <option value="">-- Choose Course --</option>
                     {(isDepartmentLoggedIn ? api.departments.getCourses(roleDepartmentData?.department) : [
-                      'B.Tech Computer Science', 'B.Tech Mechanical', 'B.Tech Civil', 'B.Tech Electrical', 'BCA', 'MCA'
+                      'BSE. Graphic', 'B.Tech Mechanical', 'B.Tech Civil', 'B.Tech Electrical', 'BCA', 'MCA', 'Arts of Computer'
                     ]).map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>

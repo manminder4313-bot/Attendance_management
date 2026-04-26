@@ -94,12 +94,13 @@ function TeacherProfile() {
         const dept = teacherData.department;
         const course = s.course;
         
-        if (dept === 'Computer Science' && ['BCA', 'MCA', 'B.Tech Computer Science'].includes(course)) return true;
-        if (dept === 'Mechanical Engineering' && course === 'B.Tech Mechanical') return true;
-        if (dept === 'Civil Engineering' && course === 'B.Tech Civil') return true;
-        if (dept === 'Electrical Engineering' && course === 'B.Tech Electrical') return true;
-        if (dept === 'B.Tech' && course === 'B.Tech') return true;
+        // Use the centralized department course mapping
+        const deptCourses = api.departments.getCourses(dept);
+        if (deptCourses.length > 0) {
+            return deptCourses.includes(course);
+        }
         
+        // Fallback for custom departments
         return course?.toLowerCase().includes(dept?.toLowerCase()) || 
                dept?.toLowerCase().includes(course?.toLowerCase());
       });
@@ -180,7 +181,7 @@ function TeacherProfile() {
         if (Math.random() > 0.2) {
           detectedIds.push(student.id);
           setLastDetectedStudent(student.fullName);
-          setLastDetectedPhoto(student.enrolledFace || student.profilePhoto || '/IMAGES/default-avatar.png');
+          setLastDetectedPhoto(student.enrolledFace || student.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(student.fullName || 'Student')}&background=8a2c20&color=fff`);
           setDetectionLog(prev => [`✓ Detected: ${student.fullName}`, ...prev.slice(0, 5)]);
         } else {
           setDetectionLog(prev => [`[!] No Match for ID: ${student.enrollmentNumber.slice(-4)}`, ...prev.slice(0, 4)]);
@@ -377,7 +378,7 @@ function TeacherProfile() {
     setShowPdfModal(false);
   };
 
-  const handlePasswordChange = (e) => {
+  const handlePasswordChange = async (e) => {
     e.preventDefault();
     setPwdUpdateMsg({ text: '', type: '' });
 
@@ -393,10 +394,10 @@ function TeacherProfile() {
 
     try {
       const updatedTeacher = { ...teacher, password: newPwd };
-      const allTeachers = JSON.parse(localStorage.getItem('teacherSubmissions')) || [];
-      const updatedList = allTeachers.map(t => t.id === updatedTeacher.id ? updatedTeacher : t);
-      localStorage.setItem('teacherSubmissions', JSON.stringify(updatedList));
-
+      const id = updatedTeacher._id || updatedTeacher.id;
+      
+      await api.teachers.update(id, updatedTeacher);
+      
       setTeacher(updatedTeacher);
       sessionStorage.setItem('loggedInTeacher', JSON.stringify(updatedTeacher));
 
@@ -409,7 +410,7 @@ function TeacherProfile() {
       }, 2000);
     } catch (err) {
       console.error('Password update error:', err);
-      setPwdUpdateMsg({ text: 'Failed to update password. Please try again.', type: 'error' });
+      setPwdUpdateMsg({ text: `Failed to update password: ${err.message || 'Server error'}`, type: 'error' });
     }
   };
 
@@ -461,11 +462,11 @@ function TeacherProfile() {
       )}
 
       {/* Header Section */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
+      <div className="admin-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <div style={{ position: 'relative' }}>
             <img 
-              src={teacher.profilePhoto || '/IMAGES/default-avatar.png'} 
+              src={teacher.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(teacher.fullName || 'Teacher')}&background=8a2c20&color=fff`} 
               alt="Profile" 
               style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #8a2c20', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}
             />
@@ -475,7 +476,7 @@ function TeacherProfile() {
             <p style={{ color: '#666', margin: '5px 0 0 0', fontWeight: 'bold', fontSize: '1.1rem' }}>Prof: {teacher.fullName}</p>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '15px' }}>
+        <div className="admin-actions">
           <button 
             onClick={() => setShowPwdModal(true)}
             style={{ padding: '12px 25px', backgroundColor: '#3498db', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
@@ -492,7 +493,7 @@ function TeacherProfile() {
       </div>
 
       {/* Tab Navigation */}
-      <div style={{ display: 'flex', borderBottom: '2px solid #eee', marginBottom: '30px' }}>
+      <div className="admin-tabs">
         <button 
           onClick={() => setActiveTab('profile')} 
           style={{ 
@@ -1068,7 +1069,7 @@ function TeacherProfile() {
                           const s = students.find(std => (std._id || std.id)?.toString() === id.toString());
                           return s ? (
                             <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f9f9f9', padding: '10px', borderRadius: '8px' }}>
-                              <img src={s.profilePhoto || '/IMAGES/default-avatar.png'} style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} alt="S" />
+                              <img src={s.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.fullName || 'Student')}&background=8a2c20&color=fff`} style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} alt="S" />
                               <span style={{ fontSize: '14px' }}>{s.fullName}</span>
                               <span style={{ fontSize: '12px', color: '#999', marginLeft: 'auto' }}>{s.enrollmentNumber}</span>
                             </div>
@@ -1085,7 +1086,7 @@ function TeacherProfile() {
                           const s = students.find(std => (std._id || std.id)?.toString() === id.toString());
                           return s ? (
                             <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f9f9f9', padding: '10px', borderRadius: '8px' }}>
-                              <img src={s.profilePhoto || '/IMAGES/default-avatar.png'} style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} alt="S" />
+                              <img src={s.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.fullName || 'Student')}&background=8a2c20&color=fff`} style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }} alt="S" />
                               <span style={{ fontSize: '14px' }}>{s.fullName}</span>
                               <span style={{ fontSize: '12px', color: '#999', marginLeft: 'auto' }}>{s.enrollmentNumber}</span>
                             </div>

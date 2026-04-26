@@ -1,9 +1,11 @@
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:5000/api'
+const API_BASE_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? `http://${window.location.hostname}:5000/api`
   : `${window.location.origin}/api`;
 
 export const fetchApi = async (endpoint, options = {}) => {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const url = `${API_BASE_URL}${endpoint}`;
+  console.log(`📡 Fetching: ${url}`, options);
+  const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
     },
@@ -11,14 +13,8 @@ export const fetchApi = async (endpoint, options = {}) => {
   });
   
   if (!response.ok) {
-    let errorMsg = 'API Error';
-    try {
-      const error = await response.json();
-      errorMsg = error.message || errorMsg;
-    } catch (e) {
-      // Fallback if response is not JSON
-    }
-    throw new Error(errorMsg);
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `API Error (${response.status})`);
   }
   return response.json();
 };

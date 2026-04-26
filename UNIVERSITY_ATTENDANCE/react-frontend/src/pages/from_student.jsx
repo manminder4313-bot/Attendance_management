@@ -17,6 +17,25 @@ function FormStudent() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Check if a Department HOD is logged in to filter courses
+  const isDepartmentLoggedIn = sessionStorage.getItem('isDepartmentLoggedIn') === 'true';
+  const roleDepartmentData = isDepartmentLoggedIn ? JSON.parse(sessionStorage.getItem('loggedInDepartment')) : null;
+  
+  const allCourses = [
+    'BSE. Graphic',
+    'B.Tech Mechanical',
+    'B.Tech Civil',
+    'B.Tech Electrical',
+    'BCA',
+    'MCA',
+    'B.A in Computer science',
+    'B.Tech'
+  ];
+
+  const availableCourses = (isDepartmentLoggedIn && roleDepartmentData?.department) 
+    ? api.departments.getCourses(roleDepartmentData.department)
+    : allCourses;
+
   const compressImage = (file, callback) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -92,7 +111,7 @@ function FormStudent() {
 
         <form onSubmit={handleSubmit}>
           <h2 style={{ borderBottom: '2px solid #eaeaea', color: '#333', paddingBottom: '5px', margin: '25px 0 15px' }}>Personal Information</h2>
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+          <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
               <label>Full Name</label>
               <input name="fullName" type="text" placeholder="Enter full name" onChange={handleChange} required />
@@ -103,7 +122,7 @@ function FormStudent() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+          <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
               <label>Profile Photo</label>
               <input name="profilePhoto" type="file" accept="image/*" onChange={handleChange} />
@@ -113,7 +132,7 @@ function FormStudent() {
             </div>
           </div>
           
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+          <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
               <label>Phone Number</label>
               <input name="phone" type="tel" placeholder="Enter phone number" onChange={handleChange} required />
@@ -134,23 +153,20 @@ function FormStudent() {
           </div>
 
           <h2 style={{ borderBottom: '2px solid #eaeaea', color: '#333', paddingBottom: '5px', margin: '25px 0 15px' }}>Academic Information</h2>
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+          <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
               <label>Enrollment / Roll Number</label>
               <input name="enrollmentNumber" type="text" placeholder="e.g. 123456789" onChange={handleChange} required />
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+          <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
               <label>Course</label>
-              <select name="course" onChange={handleChange}>
-                <option>Select course</option>
-                <option>B.Tech Computer Science</option>
-                <option>B.Tech Mechanical</option>
-                <option>B.Tech Civil</option>
-                <option>B.Tech Electrical</option>
-                <option>BCA</option>
-                <option>MCA</option>
+              <select name="course" value={formData.course} onChange={handleChange} required>
+                <option value="">Select course</option>
+                {availableCourses.map(course => (
+                  <option key={course} value={course}>{course}</option>
+                ))}
               </select>
             </div>
             <div className="form-group" style={{ flex: 1 }}>
