@@ -22,7 +22,8 @@ function StudentFaceUpload() {
   }, [searchParams]);
 
   const findStudent = async (queryRoll) => {
-    let roll = (queryRoll || rollNo || '').toString().trim();
+    // Ensure we ignore the click event object if called from onClick
+    let roll = (queryRoll && typeof queryRoll === 'string' ? queryRoll : rollNo || '').toString().trim();
     if (!roll) return;
     
     setLoading(true);
@@ -207,7 +208,7 @@ function StudentFaceUpload() {
               />
             </div>
             <button 
-              onClick={findStudent}
+              onClick={() => findStudent()}
               style={{ 
                 background: '#white', 
                 color: '#8a2c20', 
