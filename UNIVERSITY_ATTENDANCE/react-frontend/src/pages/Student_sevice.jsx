@@ -60,10 +60,8 @@ function StudentService() {
       const data = await api.login(loginData.id, loginData.pwd);
       
       if (data.type === 'student') {
-        setStudentInfo(data.user);
-        setIsLoggedIn(true);
         sessionStorage.setItem('loggedInStudent', JSON.stringify(data.user));
-        fetchAttendance(data.user);
+        navigate('/student-dashboard');
       } else {
         setErrorMsg('Invalid credentials for student portal.');
       }

@@ -11,10 +11,15 @@ import TeacherProfile from './pages/TeacherProfile';
 import FormStudent from './pages/from_student';
 import FormDepartment from './pages/from_department';
 import StudentFaceUpload from './pages/StudentFaceUpload';
+import StudentDashboard from './pages/StudentDashboard';
+import { useLocation } from 'react-router-dom';
 function App() {
+  const location = useLocation();
+  const hideNavbar = location.pathname === '/student-dashboard';
+  
   return (
     <>
-      <Navbar />
+      {!hideNavbar && <Navbar />}
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
@@ -27,6 +32,7 @@ function App() {
         <Route path="/student-form" element={<FormStudent />} />
         <Route path="/department-form" element={<FormDepartment />} />
         <Route path="/upload-face" element={<StudentFaceUpload />} />
+        <Route path="/student-dashboard" element={<StudentDashboard />} />
       </Routes>
     </>
   );
