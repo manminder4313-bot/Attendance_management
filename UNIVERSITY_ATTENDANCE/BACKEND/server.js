@@ -50,6 +50,10 @@ app.get('/api/health', (req, res) => {
   res.json({ status, v: '2026-04-27-00:38' });
 });
 
+app.get('/api/ping', (req, res) => {
+  res.json({ message: 'pong', time: new Date().toISOString() });
+});
+
 
 
 // =======================
@@ -267,6 +271,7 @@ app.post('/api/attendance', async (req, res) => {
 // LOGIN
 app.post('/api/login', async (req, res) => {
   const { id, password } = req.body;
+  console.log(`🔐 Login attempt for: ${id}`);
 
   try {
     let user = await Admin.findOne({
