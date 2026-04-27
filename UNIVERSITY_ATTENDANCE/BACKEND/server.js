@@ -51,6 +51,14 @@ app.get('/api/ping', (req, res) => {
   res.json({ message: 'pong', time: new Date().toISOString() });
 });
 
+app.get('/api/status', (req, res) => {
+  res.json({ 
+    server: 'Running',
+    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Connecting/Error',
+    env: process.env.NODE_ENV || 'production'
+  });
+});
+
 // =======================
 // 📌 API ROUTES
 // =======================
@@ -302,23 +310,22 @@ app.post('/api/sync', async (req, res) => {
 });
 
 // =======================
-// 🚀 CONNECT DB + START SERVER
+// 🚀 START SERVER
 // =======================
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+});
 
+// =======================
+// 🚀 CONNECT DB
+// =======================
 console.log('⏳ Connecting to MongoDB...');
-
 mongoose.connect(MONGODB_URI, {
   serverSelectionTimeoutMS: 5000,
 })
 .then(async () => {
   console.log('✅ MongoDB Connected');
-
-  // ✅ Start server ONLY after DB connects
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
-  });
-
-  // ✅ Seed default admin
+  // Seed default admin
   try {
     const adminCount = await Admin.countDocuments();
     if (adminCount === 0) {
@@ -328,7 +335,6 @@ mongoose.connect(MONGODB_URI, {
         email: 'manminder4313@gmail.com',
         password: 'admin@1234',
         contact: '9915955319',
-        profilePhoto: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEU…',
         role: 'admin'
       });
       await defaultAdmin.save();
@@ -337,11 +343,10 @@ mongoose.connect(MONGODB_URI, {
   } catch (err) {
     console.error('⚠️ Seeding Error:', err.message);
   }
-
 })
 .catch((err) => {
   console.error('❌ MongoDB Connection Error:', err.message);
-  process.exit(1);
+  // Don't exit, let the server stay alive to show status
 });
 
 // ✅ Global Error Handler
