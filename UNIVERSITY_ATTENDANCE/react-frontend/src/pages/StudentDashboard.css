@@ -361,6 +361,65 @@
   color: #ccc;
 }
 
+.calendar-day.danger {
+  background-color: #e74c3c;
+  color: white;
+}
+
+/* Status Badges */
+.status-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-badge.present { background-color: #e8f5e9; color: #2e7d32; }
+.status-badge.absent { background-color: #fce4ec; color: #c2185b; }
+
+/* Modal Overlay */
+.dashboard-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.dashboard-modal {
+  background: #fff;
+  padding: 30px;
+  border-radius: 15px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  animation: modalIn 0.3s ease-out;
+}
+
+.dashboard-modal h3 {
+  margin-bottom: 20px;
+  color: var(--text-main);
+}
+
+.dashboard-modal input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-top: 5px;
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @media (max-width: 1200px) {
   .content-wrapper {
     grid-template-columns: 1fr;
