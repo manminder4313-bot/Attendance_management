@@ -3,12 +3,14 @@ services:
     name: attendance-system
     env: node
     plan: free
-    rootDir: UNIVERSITY_ATTENDANCE/BACKEND
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    rootDir: UNIVERSITY_ATTENDANCE
+    buildCommand: |
+      cd BACKEND && npm install
+      cd ../react-frontend && npm install && npm run build
+    startCommand: cd BACKEND && npm start
     envVars:
       - key: MONGODB_URI
-        sync: false # User will need to provide this in Render dashboard
+        sync: false
       - key: PORT
         value: 5000
       - key: NODE_VERSION
