@@ -27,6 +27,7 @@ app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
 // ✅ Request Logger
+// ✅ Request Logger (MUST BE FIRST)
 app.use((req, res, next) => {
   console.log(`📡 [${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
@@ -40,63 +41,14 @@ if (!MONGODB_URI) {
   process.exit(1);
 }
 
-// ✅ Static Files (Serve Frontend)
-const distPath = path.join(__dirname, '../react-frontend/dist');
-app.use(express.static(distPath));
-
 // ✅ Health routes
 app.get('/api/health', (req, res) => {
   const status = mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected';
-  res.json({ status, v: '2026-04-27-00:38' });
+  res.json({ status, v: '2026-04-27-01:10' });
 });
 
 app.get('/api/ping', (req, res) => {
   res.json({ message: 'pong', time: new Date().toISOString() });
-});
-
-
-
-// =======================
-// 🚀 CONNECT DB + START SERVER
-// =======================
-
-console.log('⏳ Connecting to MongoDB...');
-
-mongoose.connect(MONGODB_URI, {
-  serverSelectionTimeoutMS: 5000,
-})
-.then(async () => {
-  console.log('✅ MongoDB Connected');
-
-  // ✅ Start server ONLY after DB connects
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
-  });
-
-  // ✅ Seed default admin
-  try {
-    const adminCount = await Admin.countDocuments();
-    if (adminCount === 0) {
-      const defaultAdmin = new Admin({
-        id: 'Adminmanminder',
-        fullName: 'Manminder Maan',
-        email: 'manminder4313@gmail.com',
-        password: 'admin@1234',
-        contact: '9915955319',
-        profilePhoto: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEU…',
-        role: 'admin'
-      });
-      await defaultAdmin.save();
-      console.log('👤 Default admin created');
-    }
-  } catch (err) {
-    console.error('⚠️ Seeding Error:', err.message);
-  }
-
-})
-.catch((err) => {
-  console.error('❌ MongoDB Connection Error:', err.message);
-  process.exit(1);
 });
 
 // =======================
@@ -349,11 +301,58 @@ app.post('/api/sync', async (req, res) => {
   }
 });
 
+// =======================
+// 🚀 CONNECT DB + START SERVER
+// =======================
+
+console.log('⏳ Connecting to MongoDB...');
+
+mongoose.connect(MONGODB_URI, {
+  serverSelectionTimeoutMS: 5000,
+})
+.then(async () => {
+  console.log('✅ MongoDB Connected');
+
+  // ✅ Start server ONLY after DB connects
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+  });
+
+  // ✅ Seed default admin
+  try {
+    const adminCount = await Admin.countDocuments();
+    if (adminCount === 0) {
+      const defaultAdmin = new Admin({
+        id: 'Adminmanminder',
+        fullName: 'Manminder Maan',
+        email: 'manminder4313@gmail.com',
+        password: 'admin@1234',
+        contact: '9915955319',
+        profilePhoto: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEU…',
+        role: 'admin'
+      });
+      await defaultAdmin.save();
+      console.log('👤 Default admin created');
+    }
+  } catch (err) {
+    console.error('⚠️ Seeding Error:', err.message);
+  }
+
+})
+.catch((err) => {
+  console.error('❌ MongoDB Connection Error:', err.message);
+  process.exit(1);
+});
+
 // ✅ Global Error Handler
 app.use((err, req, res, next) => {
   console.error('💥 Global Error:', err.stack);
   res.status(err.status || 500).json({ message: err.message });
 });
+
+// ✅ Static Files (Serve Frontend)
+const distPath = path.join(__dirname, '../react-frontend/dist');
+app.use(express.static(distPath));
 
 // ✅ Wildcard route to serve React app for any non-API route
 // This MUST be the last route
