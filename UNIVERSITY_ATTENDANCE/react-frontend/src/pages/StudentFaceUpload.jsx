@@ -22,21 +22,34 @@ function StudentFaceUpload() {
   }, [searchParams]);
 
   const findStudent = async (queryRoll) => {
-    const roll = queryRoll || rollNo;
+    let roll = (queryRoll || rollNo || '').toString().trim();
     if (!roll) return;
+    
+    setLoading(true);
+    setStatus({ text: 'Verifying Roll Number...', type: 'info' });
+
     try {
       const studentsList = await api.students.getAll();
-      const found = studentsList.find(s => s.enrollmentNumber === roll || s.rollNumber === roll);
+      console.log(`📡 Searching for roll: "${roll}" among ${studentsList.length} students`);
+      
+      const found = studentsList.find(s => {
+        const sEnroll = (s.enrollmentNumber || '').toString().trim();
+        const sRoll = (s.rollNumber || '').toString().trim();
+        return sEnroll === roll || sRoll === roll;
+      });
+
       if (found) {
         setStudent(found);
         setStatus({ text: `Identity Verified: ${found.fullName || found.name}`, type: 'success' });
       } else {
         setStudent(null);
-        setStatus({ text: 'Roll Number not found. Please check and try again.', type: 'error' });
+        setStatus({ text: `Roll Number "${roll}" not found in database.`, type: 'error' });
       }
     } catch (err) {
       console.error('Error finding student:', err);
-      setStatus({ text: 'Error connecting to database.', type: 'error' });
+      setStatus({ text: 'Error connecting to database. Please try again.', type: 'error' });
+    } finally {
+      setLoading(false);
     }
   };
 
