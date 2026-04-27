@@ -3,7 +3,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "build": "cd ../react-frontend && npm install && npm run build"
+    "build": "cd ../react-frontend && npm install && npm run build && cp -r dist ../BACKEND/dist"
   },
   "dependencies": {
     "body-parser": "^2.2.2",
