@@ -7,6 +7,7 @@ services:
     buildCommand: |
       cd BACKEND && npm install
       cd ../react-frontend && npm install && npm run build
+      cp -r ../react-frontend/dist ./BACKEND/dist
     startCommand: cd BACKEND && npm start
     envVars:
       - key: MONGODB_URI

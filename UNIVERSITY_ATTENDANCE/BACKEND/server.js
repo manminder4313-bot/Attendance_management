@@ -4,6 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import bodyParser from 'body-parser';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -356,11 +357,31 @@ app.use((err, req, res, next) => {
 });
 
 // ✅ Static Files (Serve Frontend)
-const distPath = path.join(__dirname, '../react-frontend/dist');
+let distPath = path.resolve(__dirname, '../react-frontend/dist');
+
+// Diagnostic: Check if path exists, if not try sibling
+if (!fs.existsSync(distPath)) {
+  const altPath = path.resolve(__dirname, 'dist'); // Maybe it was copied?
+  if (fs.existsSync(altPath)) {
+    distPath = altPath;
+  }
+}
+
+console.log(`📂 Serving static files from: ${distPath}`);
+if (!fs.existsSync(distPath)) {
+  console.error(`❌ CRITICAL: dist folder not found at ${distPath}`);
+  console.log(`Current __dirname: ${__dirname}`);
+}
+
 app.use(express.static(distPath));
 
 // ✅ Wildcard route to serve React app for any non-API route
 // This MUST be the last route
 app.get(/.*/, (req, res) => {
-  res.sendFile(path.join(distPath, 'index.html'));
+  const indexPath = path.join(distPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).send(`Frontend not found. Looked at: ${indexPath}`);
+  }
 });
