@@ -27,3 +27,5 @@ lerna-debug.log*
 # Project specifics
 UNIVERSITY_ATTENDANCE/react-frontend/node_modules/
 UNIVERSITY_ATTENDANCE/react-frontend/dist/
+.env
+**/.env

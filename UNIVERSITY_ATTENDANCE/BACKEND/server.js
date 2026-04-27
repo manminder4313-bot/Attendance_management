@@ -26,6 +26,12 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
+// ✅ Request Logger
+app.use((req, res, next) => {
+  console.log(`📡 [${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
 // ✅ Check ENV variable
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://manminder_2002:Maan%404313@ac-26w7ddf-shard-00-00.1htdj3m.mongodb.net:27017,ac-26w7ddf-shard-00-01.1htdj3m.mongodb.net:27017,ac-26w7ddf-shard-00-02.1htdj3m.mongodb.net:27017/userDB?ssl=true&authSource=admin&retryWrites=true&w=majority';
 
@@ -41,17 +47,10 @@ app.use(express.static(distPath));
 // ✅ Health routes
 app.get('/api/health', (req, res) => {
   const status = mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected';
-  res.json({ status });
+  res.json({ status, v: '2026-04-27-00:38' });
 });
 
-// ✅ Wildcard route to serve React app for any non-API route
-app.get('(.*)', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(distPath, 'index.html'));
-  } else {
-    res.status(404).json({ message: 'API Route Not Found' });
-  }
-});
+
 
 // =======================
 // 🚀 CONNECT DB + START SERVER
@@ -66,8 +65,8 @@ mongoose.connect(MONGODB_URI, {
   console.log('✅ MongoDB Connected');
 
   // ✅ Start server ONLY after DB connects
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
   });
 
   // ✅ Seed default admin
@@ -121,6 +120,22 @@ app.post('/api/admins', async (req, res) => {
   }
 });
 
+app.put('/api/admins/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = { ...req.body };
+    delete updateData._id;
+    delete updateData.__v;
+
+    const query = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { id: id };
+    const admin = await Admin.findOneAndUpdate(query, updateData, { new: true });
+    if (!admin) return res.status(404).json({ message: 'Admin not found' });
+    res.json(admin);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 // TEACHERS
 app.get('/api/teachers', async (req, res) => {
   try {
@@ -136,6 +151,22 @@ app.post('/api/teachers', async (req, res) => {
     const teacher = new Teacher(req.body);
     await teacher.save();
     res.status(201).json(teacher);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+app.put('/api/teachers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = { ...req.body };
+    delete updateData._id;
+    delete updateData.__v;
+
+    const query = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { username: id };
+    const teacher = await Teacher.findOneAndUpdate(query, updateData, { new: true });
+    if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
+    res.json(teacher);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -163,7 +194,14 @@ app.post('/api/students', async (req, res) => {
 
 app.put('/api/students/:id', async (req, res) => {
   try {
-    const student = await Student.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const { id } = req.params;
+    const updateData = { ...req.body };
+    delete updateData._id;
+    delete updateData.__v;
+
+    const query = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { $or: [{ enrollmentNumber: id }, { username: id }] };
+    const student = await Student.findOneAndUpdate(query, updateData, { new: true });
+    if (!student) return res.status(404).json({ message: 'Student not found' });
     res.json(student);
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -185,6 +223,22 @@ app.post('/api/departments', async (req, res) => {
     const department = new Department(req.body);
     await department.save();
     res.status(201).json(department);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+app.put('/api/departments/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = { ...req.body };
+    delete updateData._id;
+    delete updateData.__v;
+
+    const query = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { username: id };
+    const department = await Department.findOneAndUpdate(query, updateData, { new: true });
+    if (!department) return res.status(404).json({ message: 'Department not found' });
+    res.json(department);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -244,4 +298,60 @@ app.post('/api/login', async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
+});
+
+// SYNC (Migration)
+app.post('/api/sync', async (req, res) => {
+  const { type, data } = req.body;
+  console.log(`📡 Sync request received for type: ${type} with ${data?.length} items`);
+  if (!Array.isArray(data)) return res.status(400).json({ message: 'Data must be an array' });
+
+  try {
+    let result;
+    if (type === 'admins') {
+      result = await Promise.all(data.map(item => 
+        Admin.findOneAndUpdate({ email: item.email }, item, { upsert: true, new: true })
+      ));
+    } else if (type === 'teachers') {
+      result = await Promise.all(data.map(item => 
+        Teacher.findOneAndUpdate({ email: item.email }, item, { upsert: true, new: true })
+      ));
+    } else if (type === 'students') {
+      result = await Promise.all(data.map(item => 
+        Student.findOneAndUpdate({ enrollmentNumber: item.enrollmentNumber }, item, { upsert: true, new: true })
+      ));
+    } else if (type === 'departments') {
+      result = await Promise.all(data.map(item => 
+        Department.findOneAndUpdate({ headName: item.headName, email: item.email }, item, { upsert: true, new: true })
+      ));
+    } else if (type === 'attendance') {
+      // For attendance, we check for exact match to avoid duplicates
+      result = await Promise.all(data.map(item => 
+        Attendance.findOneAndUpdate({ 
+          date: item.date, 
+          teacherId: item.teacherId, 
+          subject: item.subject,
+          semester: item.semester 
+        }, item, { upsert: true, new: true })
+      ));
+    } else {
+      return res.status(400).json({ message: 'Invalid sync type' });
+    }
+    res.json({ message: `Successfully synced ${data.length} items for ${type}`, count: result.length });
+  } catch (err) {
+    console.error(`Sync Error (${type}):`, err.message);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ✅ Global Error Handler
+app.use((err, req, res, next) => {
+  console.error('💥 Global Error:', err.stack);
+  res.status(err.status || 500).json({ message: err.message });
+});
+
+// ✅ Wildcard route to serve React app for any non-API route
+// This MUST be the last route
+app.get(/.*/, (req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
 });
