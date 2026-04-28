@@ -64,6 +64,11 @@ app.get('/api/status', (req, res) => {
 // 📌 API ROUTES
 // =======================
 
+// TEST
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'API is working', time: new Date().toISOString() });
+});
+
 // ADMIN
 app.get('/api/admins', async (req, res) => {
   try {
@@ -310,15 +315,9 @@ app.post('/api/sync', async (req, res) => {
   }
 });
 
-// =======================
-// 🚀 START SERVER
-// =======================
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
-});
 
 // =======================
-// 🚀 CONNECT DB
+// 🚀 CONNECT DB & START SERVER
 // =======================
 console.log('⏳ Connecting to MongoDB...');
 mongoose.connect(MONGODB_URI, {
@@ -347,48 +346,38 @@ mongoose.connect(MONGODB_URI, {
 })
 .catch((err) => {
   console.error('❌ MongoDB Connection Error:', err.message);
-  // Don't exit, let the server stay alive to show status
-});
-
-// ✅ Global Error Handler
-app.use((err, req, res, next) => {
-  console.error(`💥 [${new Date().toISOString()}] Global Error at ${req.method} ${req.url}:`);
-  console.error(err.stack);
-  
-  const status = err.status || 500;
-  res.status(status).json({ 
-    message: err.message || 'Internal Server Error',
-    error: process.env.NODE_ENV === 'development' ? err.stack : undefined,
-    path: req.url
-  });
 });
 
 // ✅ Static Files (Serve Frontend)
 let distPath = path.resolve(__dirname, '../react-frontend/dist');
-
-// Diagnostic: Check if path exists, if not try sibling
 if (!fs.existsSync(distPath)) {
-  const altPath = path.resolve(__dirname, 'dist'); // Maybe it was copied?
-  if (fs.existsSync(altPath)) {
-    distPath = altPath;
-  }
+  distPath = path.resolve(__dirname, 'dist');
 }
 
 console.log(`📂 Serving static files from: ${distPath}`);
-if (!fs.existsSync(distPath)) {
-  console.error(`❌ CRITICAL: dist folder not found at ${distPath}`);
-  console.log(`Current __dirname: ${__dirname}`);
-}
-
 app.use(express.static(distPath));
 
 // ✅ Wildcard route to serve React app for any non-API route
-// This MUST be the last route
-app.get(/.*/, (req, res) => {
+app.get('*', (req, res) => {
   const indexPath = path.join(distPath, 'index.html');
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
     res.status(404).send(`Frontend not found. Looked at: ${indexPath}`);
   }
+});
+
+// ✅ Global Error Handler (MUST BE LAST MIDDLEWARE)
+app.use((err, req, res, next) => {
+  console.error(`💥 [${new Date().toISOString()}] Global Error:`);
+  console.error(err.stack);
+  const status = err.status || 500;
+  res.status(status).json({ 
+    message: err.message || 'Internal Server Error',
+    path: req.url
+  });
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
 });
