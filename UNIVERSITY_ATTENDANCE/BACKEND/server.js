@@ -333,7 +333,7 @@ mongoose.connect(MONGODB_URI, {
         username: 'Adminmanminder',
         fullName: 'Manminder Maan',
         email: 'manminder4313@gmail.com',
-        password: 'admin@1234',
+        password: 'Maan@1234',
         contact: '9915955319',
         role: 'admin'
       });
