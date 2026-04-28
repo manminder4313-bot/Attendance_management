@@ -5,7 +5,7 @@ import api from '../services/api';
 
 function Register() {
   const [formData, setFormData] = useState({
-    id: '',
+    username: '',
     password: '',
     email: '',
     contact: '',
@@ -30,7 +30,7 @@ function Register() {
       setTimeout(() => navigate('/login'), 2000);
     } catch (err) {
       console.error('Registration failed:', err);
-      setMsg('Error creating account in MongoDB.');
+      setMsg(err.message || 'Error creating account in MongoDB.');
     }
   };
 
@@ -58,11 +58,11 @@ function Register() {
       const file = e.target.files[0];
       if (file) {
         compressImage(file, (compressedData) => {
-          setFormData({ ...formData, profilePhoto: compressedData });
+          setFormData(prev => ({ ...prev, profilePhoto: compressedData }));
         });
       }
     } else {
-      setFormData({ ...formData, [e.target.name]: e.target.value });
+      setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     }
   };
 
@@ -70,7 +70,7 @@ function Register() {
     <div className="auth-container">
       <div className="form-box">
         <h1>Setup Admin Account</h1>
-        {msg && <div className="message success">{msg}</div>}
+        {msg && <div className={`message ${msg.toLowerCase().includes('error') || msg.toLowerCase().includes('fail') ? 'error' : 'success'}`}>{msg}</div>}
         <form onSubmit={handleRegister}>
           <div className="form-group">
             <label>Full Name</label>
@@ -81,8 +81,8 @@ function Register() {
             <input name="profilePhoto" type="file" accept="image/*" onChange={handleChange} />
           </div>
           <div className="form-group">
-            <label>New Admin ID</label>
-            <input name="id" type="text" placeholder="Create Username" onChange={handleChange} required />
+            <label>New Admin Username</label>
+            <input name="username" type="text" placeholder="Create Username" onChange={handleChange} required />
           </div>
           <div className="form-group">
             <label>New Password</label>

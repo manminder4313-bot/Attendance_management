@@ -64,7 +64,7 @@ function Admin() {
       setSubmissions(teachers.map(t => ({ ...t, id: t._id || t.id })));
       setStudentSubmissions(students.map(s => ({ ...s, id: s._id || s.id })));
       setDepartmentSubmissions(depts.map(d => ({ ...d, id: d._id || d.id })));
-      setAdminSubmissions(admins.map(a => ({ ...a, id: a._id || a.id })));
+      setAdminSubmissions(admins.map(a => ({ ...a, id: a._id })));
       setAttendanceRecords(recs.map(r => ({
         ...r,
         id: r._id || r.id,
@@ -227,7 +227,7 @@ function Admin() {
         localStorage.setItem('departmentSubmissions', JSON.stringify(remaining));
         setDepartmentSubmissions(remaining);
       } else if (activeTab === 'admins') {
-        const remaining = adminSubmissions.filter(a => !selectedIds.includes(a.uuid || a.id));
+        const remaining = adminSubmissions.filter(a => !selectedIds.includes(a._id || a.uuid || a.username));
         if (remaining.length === 0 && adminSubmissions.length > 0) {
           alert("Cannot delete all master admins. The system requires at least one admin account to remain accessible.");
           setIsDeleteMode(false);
@@ -255,7 +255,7 @@ function Admin() {
     const currentData = activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? departmentSubmissions : adminSubmissions;
     if (e.target.checked) {
       if (activeTab === 'admins') {
-        setSelectedIds(currentData.filter(a => a.id !== 'admin').map(t => t.uuid || t.id));
+        setSelectedIds(currentData.filter(a => a.username !== 'Adminmanminder').map(t => t._id || t.uuid || t.username));
       } else {
         setSelectedIds(currentData.map(t => t.id));
       }
@@ -287,16 +287,19 @@ function Admin() {
       <input type="file" ref={memberPhotoInputRef} style={{ display: 'none' }} accept="image/*" onChange={handleMemberPhotoChange} />
       <div className="admin-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <div style={{ position: 'relative' }}>
+          <div className="profile-container" onClick={() => fileInputRef.current.click()} style={{ position: 'relative' }}>
             {isDepartmentLoggedIn && roleDepartmentData?.profilePhoto ? (
-              <img src={roleDepartmentData.profilePhoto} alt="HOD" className="profile-thumb" style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--primary)', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} onClick={() => fileInputRef.current.click()} />
+              <img src={roleDepartmentData.profilePhoto} alt="HOD" className="profile-thumb" style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--primary)', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} />
             ) : isAdminLoggedIn && adminCreds?.profilePhoto ? (
-              <img src={adminCreds.profilePhoto} alt="Admin" className="profile-thumb" style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--primary)', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} onClick={() => fileInputRef.current.click()} />
+              <img src={adminCreds.profilePhoto} alt="Admin" className="profile-thumb" style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--primary)', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} />
             ) : (
-              <div className="profile-thumb" style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '20px', fontWeight: 'bold', border: '2px solid var(--primary)' }} onClick={() => fileInputRef.current.click()}>
+              <div className="profile-thumb" style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '20px', fontWeight: 'bold', border: '2px solid var(--primary)' }}>
                 {(isDepartmentLoggedIn ? roleDepartmentData?.headName : adminCreds?.fullName)?.charAt(0).toUpperCase() || 'A'}
               </div>
             )}
+            <div className="edit-overlay">
+              <span>📷</span>
+            </div>
             <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept="image/*" onChange={handlePhotoChange} />
           </div>
           <div>
@@ -599,8 +602,8 @@ function Admin() {
               </thead>
               <tbody>
                 {adminSubmissions.map((a) => (
-                  <tr key={a.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(a.uuid || a.id) ? '#f0f8ff' : 'transparent' }}>
-                    {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(a.uuid || a.id)} onChange={() => handleSelect(a.uuid || a.id)} disabled={a.id === 'admin'} /></td>}
+                  <tr key={a._id || a.username} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(a._id || a.uuid || a.username) ? '#f0f8ff' : 'transparent' }}>
+                    {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(a._id || a.uuid || a.username)} onChange={() => handleSelect(a._id || a.uuid || a.username)} disabled={a.username === 'Adminmanminder'} /></td>}
                     <td style={tdStyle}>
                       <div style={{ position: 'relative', display: 'inline-block' }}>
                         {a.profilePhoto ? (
@@ -614,7 +617,7 @@ function Admin() {
                     <td style={{ ...tdStyle, fontWeight: 600 }}>{a.fullName || 'Admin User'}</td>
                     <td style={tdStyle}>{a.email}</td>
                     <td style={tdStyle}>{a.contact}</td>
-                    <td style={{ ...tdStyle, color: '#27ae60', fontWeight: 600 }}>{a.id}</td>
+                    <td style={{ ...tdStyle, color: '#27ae60', fontWeight: 600 }}>{a.username || 'N/A'}</td>
                     <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{a.password}</td>
 
                   </tr>

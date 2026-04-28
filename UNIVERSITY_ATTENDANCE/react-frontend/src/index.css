@@ -1117,3 +1117,42 @@ header {
         grid-template-columns: 1fr;
     }
 }
+
+/* Profile Edit Overlay */
+.profile-container {
+    position: relative;
+    cursor: pointer;
+    width: 60px;
+    height: 60px;
+}
+
+.edit-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+    opacity: 0;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(2px);
+    z-index: 10;
+}
+
+.profile-container:hover .edit-overlay {
+    opacity: 1;
+}
+
+.profile-container:hover .profile-thumb {
+    transform: scale(1.05);
+}
+
+.profile-thumb {
+    transition: transform 0.3s ease;
+}

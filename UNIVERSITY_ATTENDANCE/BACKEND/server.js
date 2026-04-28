@@ -92,7 +92,7 @@ app.put('/api/admins/:id', async (req, res) => {
     delete updateData._id;
     delete updateData.__v;
 
-    const query = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { id: id };
+    const query = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { username: id };
     const admin = await Admin.findOneAndUpdate(query, updateData, { new: true });
     if (!admin) return res.status(404).json({ message: 'Admin not found' });
     res.json(admin);
@@ -236,7 +236,7 @@ app.post('/api/login', async (req, res) => {
 
   try {
     let user = await Admin.findOne({
-      $or: [{ id: id }, { email: id }],
+      $or: [{ username: id }, { email: id }],
       password
     });
     if (user) return res.json({ type: 'admin', user });
@@ -331,7 +331,7 @@ mongoose.connect(MONGODB_URI, {
     const adminCount = await Admin.countDocuments();
     if (adminCount === 0) {
       const defaultAdmin = new Admin({
-        id: 'Adminmanminder',
+        username: 'Adminmanminder',
         fullName: 'Manminder Maan',
         email: 'manminder4313@gmail.com',
         password: 'admin@1234',
@@ -352,8 +352,15 @@ mongoose.connect(MONGODB_URI, {
 
 // ✅ Global Error Handler
 app.use((err, req, res, next) => {
-  console.error('💥 Global Error:', err.stack);
-  res.status(err.status || 500).json({ message: err.message });
+  console.error(`💥 [${new Date().toISOString()}] Global Error at ${req.method} ${req.url}:`);
+  console.error(err.stack);
+  
+  const status = err.status || 500;
+  res.status(status).json({ 
+    message: err.message || 'Internal Server Error',
+    error: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    path: req.url
+  });
 });
 
 // ✅ Static Files (Serve Frontend)

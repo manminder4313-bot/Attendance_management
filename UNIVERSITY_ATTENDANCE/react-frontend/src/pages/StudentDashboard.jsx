@@ -94,7 +94,6 @@ function StudentDashboard() {
           <span>MRSPTU</span>
         </div>
         <ul className="sidebar-menu">
-          <li className="sidebar-item" onClick={() => navigate('/')}><i className="fas fa-home"></i> Home</li>
           <li className={`sidebar-item ${activeView === 'attendance' ? 'active' : ''}`} onClick={() => setActiveView('attendance')}>
             <i className="fas fa-calendar-check"></i> Attendance
           </li>

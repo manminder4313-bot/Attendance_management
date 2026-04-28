@@ -80,8 +80,8 @@ export const adminService = {
       headers = [['Name', 'Email', 'Phone', 'Role']];
       if (withCreds) headers[0].push('Username', 'Password');
       tableBody = data.map(a => {
-        const row = [a.fullName || 'Admin', a.email, a.contact, a.id === 'admin' ? 'Master Admin' : 'Admin'];
-        if (withCreds) row.push(a.id, a.password);
+        const row = [a.fullName || 'Admin', a.email, a.contact, a.username === 'Adminmanminder' ? 'Master Admin' : 'Admin'];
+        if (withCreds) row.push(a.username, a.password);
         return row;
       });
     }
