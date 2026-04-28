@@ -358,7 +358,7 @@ console.log(`📂 Serving static files from: ${distPath}`);
 app.use(express.static(distPath));
 
 // ✅ Wildcard route to serve React app for any non-API route
-app.get('(.*)', (req, res) => {
+app.get(/.*/, (req, res) => {
   const indexPath = path.join(distPath, 'index.html');
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
