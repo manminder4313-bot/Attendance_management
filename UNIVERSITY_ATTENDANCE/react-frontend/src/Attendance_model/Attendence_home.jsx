@@ -1,5 +1,5 @@
 import React from 'react';
-import './home.css';
+
 import Login from '../pages/Login';
 
 function Attendence_home() {
