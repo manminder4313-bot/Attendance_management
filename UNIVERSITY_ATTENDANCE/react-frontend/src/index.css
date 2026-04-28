@@ -25,6 +25,12 @@
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
     --border-radius: 12px;
 }
+/* Common Container for Max-Width */
+.container {
+    max-width: 1500px;
+    margin: 0 auto;
+    width: 100%;
+}
 
 * {
     margin: 0;
@@ -50,8 +56,8 @@ header {
 
 .navbar {
     display: flex;
-    justify-content: space-between;
-    padding: 15px 5%;
+    justify-content: center;
+    padding: 15px 2%;
     background: var(--white);
     align-items: center;
     position: relative;
@@ -76,9 +82,9 @@ header {
 }
 
 .logo-text {
-    text-align: center;
+    text-align: left;
     color: var(--primary);
-    font-weight: 800;
+    font-weight: 1000;
     font-size: clamp(14px, 2vw, 24px);
     line-height: 1.2;
 }
@@ -97,25 +103,29 @@ header {
 
 .navbar2 {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     background: linear-gradient(90deg, var(--primary), var(--primary-light));
     color: var(--white);
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.navbar2>div {
+.navbar2 .nav-links {
     display: flex;
     align-items: center;
+    justify-content: space-evenly;
+    width: 100%;
+    gap: 10px;
 }
 
-.navbar2 a {
+.navbar2 a, .dropdown span {
     text-decoration: none;
     color: var(--white);
-    font-weight: 500;
-    padding: 16px 30px;
-    font-size: 15px;
+    font-weight: 800;
+    padding: 16px 20px;
+    font-size: 13px;
     transition: all 0.3s ease;
     position: relative;
+    white-space: nowrap;
 }
 
 .navbar2 a::after {
@@ -166,14 +176,6 @@ header {
     cursor: pointer;
 }
 
-.dropdown span {
-    color: var(--white);
-    font-weight: 500;
-    padding: 16px 20px;
-    font-size: 15px;
-    transition: all 0.3s ease;
-    position: relative;
-}
 
 .dropdown span::after {
     content: '';
@@ -306,8 +308,8 @@ header {
 }
 
 .marquee-item {
-    font-weight: 600;
-    font-size: 14px;
+    font-weight: 700;
+    font-size: 15px;
     display: inline-flex;
     align-items: center;
 }
@@ -328,7 +330,9 @@ header {
     grid-template-columns: 320px minmax(300px, 1000px) 320px;
     justify-content: center;
     gap: 30px;
-    padding: 30px 4%;
+    padding: 30px 2%;
+    max-width: 1700px;
+    margin: 0 auto;
     min-height: calc(100vh - 160px);
     background: radial-gradient(circle at top right, rgba(247, 225, 181, 0.2), transparent 50%);
     align-items: start;
@@ -763,7 +767,8 @@ header {
 .important-links-section {
     padding: 40px 5%;
     background: var(--white);
-    margin: 30px 4% 50px 4%;
+    margin: 30px auto 50px auto;
+    max-width: 1500px;
     border-radius: var(--border-radius);
     box-shadow: var(--shadow-sm);
 }
