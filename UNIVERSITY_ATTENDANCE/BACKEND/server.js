@@ -324,7 +324,7 @@ app.post('/api/sync', async (req, res) => {
 });
 
 // ✅ Catch-all for API routes (Must be after all API routes)
-app.all('/api/*', (req, res) => {
+app.all('/api/(.*)', (req, res) => {
   res.status(404).json({ 
     message: `API Route ${req.method} ${req.url} not found`,
     availableRoutes: ['/api/login', '/api/health', '/api/admins', '/api/teachers', '/api/students', '/api/departments', '/api/attendance']
