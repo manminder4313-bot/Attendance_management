@@ -245,8 +245,17 @@ app.post('/api/attendance', async (req, res) => {
 // LOGIN
 app.post('/api/login', async (req, res) => {
   const { id, password } = req.body;
-  console.log(`🔐 Login attempt for: ${id} (Body: ${JSON.stringify(req.body)})`);
+  console.log(`🔐 Login attempt for: ${id}`);
 
+  if (!id || !password) {
+    return res.status(400).json({ message: 'User ID and Password are required' });
+  }
+  
+  // Quick check if DB is connected
+  if (mongoose.connection.readyState !== 1) {
+    console.error('❌ Database not connected at login attempt');
+    return res.status(503).json({ message: 'Database connection in progress, please try again in a moment.' });
+  }
   try {
     let user = await Admin.findOne({
       $or: [{ username: id }, { email: id }],
