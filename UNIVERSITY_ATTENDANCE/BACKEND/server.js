@@ -344,6 +344,18 @@ app.all(/^\/api\/.*/, (req, res) => {
 // =======================
 // 🚀 CONNECT DB & START SERVER
 // =======================
+mongoose.connection.on('error', (err) => {
+  console.error('❌ MongoDB Connection Error:', err.message);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️ MongoDB Disconnected. Attempting to reconnect...');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('✅ MongoDB Reconnected');
+});
+
 console.log('⏳ Connecting to MongoDB...');
 mongoose.connect(MONGODB_URI, {
   serverSelectionTimeoutMS: 5000,
@@ -359,7 +371,6 @@ mongoose.connect(MONGODB_URI, {
         fullName: 'Manminder Maan',
         email: 'manminder4313@gmail.com',
         password: 'Maan@1234',
-        contact: '9915955319',
         role: 'admin'
       });
       await defaultAdmin.save();
@@ -370,7 +381,7 @@ mongoose.connect(MONGODB_URI, {
   }
 })
 .catch((err) => {
-  console.error('❌ MongoDB Connection Error:', err.message);
+  console.error('❌ MongoDB Initial Connection Error:', err.message);
 });
 
 // ✅ Static Files (Serve Frontend)
