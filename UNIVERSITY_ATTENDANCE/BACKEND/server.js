@@ -22,6 +22,14 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// ✅ Global Exception Handlers
+process.on('uncaughtException', (err) => {
+  console.error('💥 Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 // ✅ Middleware
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
@@ -237,7 +245,7 @@ app.post('/api/attendance', async (req, res) => {
 // LOGIN
 app.post('/api/login', async (req, res) => {
   const { id, password } = req.body;
-  console.log(`🔐 Login attempt for: ${id}`);
+  console.log(`🔐 Login attempt for: ${id} (Body: ${JSON.stringify(req.body)})`);
 
   try {
     let user = await Admin.findOne({
@@ -313,6 +321,14 @@ app.post('/api/sync', async (req, res) => {
     console.error(`Sync Error (${type}):`, err.message);
     res.status(500).json({ message: err.message });
   }
+});
+
+// ✅ Catch-all for API routes (Must be after all API routes)
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ 
+    message: `API Route ${req.method} ${req.url} not found`,
+    availableRoutes: ['/api/login', '/api/health', '/api/admins', '/api/teachers', '/api/students', '/api/departments', '/api/attendance']
+  });
 });
 
 

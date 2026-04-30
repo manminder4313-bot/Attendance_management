@@ -21,9 +21,9 @@ export const fetchApi = async (endpoint, options = {}) => {
       data = await response.json();
     } else {
       const text = await response.text();
-      console.warn(`⚠️ Received non-JSON response from ${url}:`, text);
+      console.warn(`⚠️ Received non-JSON response from ${url} (Status: ${response.status}):`, text);
       if (!response.ok) {
-        throw new Error(`Server Error: ${response.status} ${response.statusText}`);
+        throw new Error(`Server Error: ${response.status} ${response.statusText} - ${text.substring(0, 100)}`);
       }
       return text; // Return as text if not JSON but OK
     }
