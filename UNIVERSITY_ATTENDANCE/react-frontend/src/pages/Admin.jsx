@@ -13,6 +13,7 @@ function Admin() {
   const [activeTab, setActiveTab] = useState('teachers');
   const [departmentFilter, setDepartmentFilter] = useState('All');
   const [courseFilter, setCourseFilter] = useState('All');
+  const [semesterFilter, setSemesterFilter] = useState('All');
   const [selectedIds, setSelectedIds] = useState([]);
   const [isDeleteMode, setIsDeleteMode] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState([]);
@@ -444,8 +445,10 @@ function Admin() {
   const baseStudents = isDepartmentLoggedIn && roleDepartmentData ? studentSubmissions.filter(s => api.departments.getCourses(roleDepartmentData.department).includes(s.course)) : studentSubmissions;
 
   const filteredTeachers = baseTeachers.filter(t => departmentFilter === 'All' || t.department === departmentFilter);
-  const filteredStudents = baseStudents
-    .filter(s => courseFilter === 'All' || s.course === courseFilter)
+  const filteredStudents = baseStudents.filter(s => 
+    (courseFilter === 'All' || s.course === courseFilter) && 
+    (semesterFilter === 'All' || s.semester === semesterFilter || String(s.semester) === semesterFilter.split(' ')[0])
+  )
     .sort((a, b) => (a.enrollmentNumber || '').localeCompare(b.enrollmentNumber || '', undefined, { numeric: true }));
 
   const handleSelectAll = (e) => {
@@ -603,12 +606,22 @@ function Admin() {
               </select>
             )
           ) : activeTab === 'students' ? (
-            <select value={courseFilter} onChange={(e) => { setCourseFilter(e.target.value); setSelectedIds([]); }} style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }}>
-              <option value="All">All Courses</option>
-              {(isDepartmentLoggedIn ? api.departments.getCourses(roleDepartmentData?.department) : [
-                'BSE. Graphic', 'B.Tech Mechanical', 'B.Tech Civil', 'B.Tech Electrical', 'BCA', 'MCA', 'B.A in Computer science'
-              ]).map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <select value={courseFilter} onChange={(e) => { setCourseFilter(e.target.value); setSelectedIds([]); }} style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }}>
+                <option value="All">All Courses</option>
+                {(isDepartmentLoggedIn ? api.departments.getCourses(roleDepartmentData?.department) : [
+                  'BSE. Graphic', 'B.Tech Mechanical', 'B.Tech Civil', 'B.Tech Electrical', 'BCA', 'MCA', 'B.A in Computer science'
+                ]).map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select value={semesterFilter} onChange={(e) => { setSemesterFilter(e.target.value); setSelectedIds([]); }} style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }}>
+                <option value="All">All Semesters</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                  <option key={n} value={`${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester`}>
+                    {n}{n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester
+                  </option>
+                ))}
+              </select>
+            </div>
           ) : null}
           {activeTab !== 'attendance_stats' && (
             <button
