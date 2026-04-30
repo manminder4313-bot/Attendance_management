@@ -12,6 +12,7 @@ const TeacherSchema = new mongoose.Schema({
   department: { type: String, required: true },
   primarySubject: { type: String },
   profilePhoto: { type: String },
+  documents: [{ name: String, data: String }],
   username: { type: String },
   role: { type: String, default: 'teacher' }
 }, { timestamps: true });

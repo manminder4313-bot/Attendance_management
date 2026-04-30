@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import Footer from '../components/Footer';
 
 function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -215,6 +216,7 @@ const slides = [
           </ul>
         </div>
       </section>
+      <Footer />
     </>
   );
 }

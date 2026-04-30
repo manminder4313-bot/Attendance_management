@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import api from '../services/api';
+import { subjectMapping } from '../utils/subjectMapping';
 
 function TeacherProfile() {
   const [teacher, setTeacher] = useState(null);
@@ -19,6 +20,7 @@ function TeacherProfile() {
   const [selectedSession, setSelectedSession] = useState('Lecture 1'); // Session selection state
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [targetRollNo, setTargetRollNo] = useState(''); // State for custom enrollment link
+  const [selectedSubject, setSelectedSubject] = useState('');
   
   // Smart Attendance States
   const [markingMode, setMarkingMode] = useState('manual'); // 'manual' or 'smart'
@@ -92,15 +94,20 @@ function TeacherProfile() {
       const allStudents = await api.students.getAll();
       const filteredStudents = allStudents.filter(s => {
         const dept = teacherData.department;
-        const course = s.course;
         
-        // Use the centralized department course mapping
+        // 1. Primary Check: Direct Department Match
+        if (s.department && dept && s.department === dept) {
+          return true;
+        }
+
+        // 2. Secondary Check: Course Mapping
+        const course = s.course;
         const deptCourses = api.departments.getCourses(dept);
-        if (deptCourses.length > 0) {
-            return deptCourses.includes(course);
+        if (deptCourses.length > 0 && deptCourses.includes(course)) {
+            return true;
         }
         
-        // Fallback for custom departments
+        // 3. Fallback: Fuzzy Name Match
         return course?.toLowerCase().includes(dept?.toLowerCase()) || 
                dept?.toLowerCase().includes(course?.toLowerCase());
       });
@@ -214,9 +221,10 @@ function TeacherProfile() {
         
         setTimeout(() => {
           setIsScanning(false);
-          saveAttendanceData(newMarks, imageData);
           stopCamera();
-          setMarkingMode('manual');
+          setMarkingMode('manual'); // Switch back to manual so teacher can review/edit
+          setSaveStatus({ text: `Scan complete! ${detectedIds.length} students detected. Please review and save.`, type: 'success' });
+          setTimeout(() => setSaveStatus({ text: '', type: '' }), 4000);
         }, 1000);
       }
     }, 80);
@@ -227,8 +235,12 @@ function TeacherProfile() {
     const isEvenSession = month < 6; // Jan to June
     const sems = [
       "1st Semester", "2nd Semester", "3rd Semester", "4th Semester",
-      "5th Semester", "6th Semester", "7th Semester", "8th Semester"
+      "5th Semester", "6th Semester", "7th Semester", "8th Semester",
+      "9th Semester", "10th Semester"
     ];
+    // Return all semesters for filtering purposes in Students/History tabs
+    if (activeTab !== 'attendance') return sems;
+
     return sems.filter((_, index) => {
       const semNum = index + 1;
       return isEvenSession ? semNum % 2 === 0 : semNum % 2 !== 0;
@@ -262,7 +274,7 @@ function TeacherProfile() {
         date: localDate,
         teacherId: teacher._id || teacher.id,
         teacherName: teacher.fullName,
-        subject: teacher.primarySubject,
+        subject: selectedSubject || teacher.primarySubject,
         semester: semesterFilter,
         course: filteredBySemester[0]?.course, // Added for stats filtering
         department: teacher.department,
@@ -420,24 +432,24 @@ function TeacherProfile() {
     setDeleteConfirmPwd('');
   };
 
-  const confirmDeletion = () => {
+  const confirmDeletion = async () => {
     if (deleteConfirmPwd !== teacher.password) {
       alert("Incorrect password! Deletion failed.");
       return;
     }
 
     try {
-      const allRecords = JSON.parse(localStorage.getItem('attendanceRecords')) || [];
-      const updatedRecords = allRecords.filter(r => r.id !== recordToDelete.id);
-      localStorage.setItem('attendanceRecords', JSON.stringify(updatedRecords));
+      const id = recordToDelete._id || recordToDelete.id;
+      await api.attendance.delete(id);
       
-      setSaveStatus({ text: 'Record deleted successfully.', type: 'success' });
+      setSaveStatus({ text: 'Record deleted successfully from database.', type: 'success' });
       setShowDeleteModal(false);
       setRecordToDelete(null);
+      loadHistory(teacher); // Refresh history
       setTimeout(() => setSaveStatus({ text: '', type: '' }), 3000);
     } catch (err) {
       console.error('Delete error:', err);
-      alert("Failed to delete record.");
+      alert(`Failed to delete record: ${err.message || 'Server error'}`);
     }
   };
 
@@ -448,7 +460,11 @@ function TeacherProfile() {
 
   if (!teacher) return null;
 
-  const filteredBySemester = semesterFilter === '' ? [] : students.filter(s => semesterFilter === 'All' || s.semester === semesterFilter);
+  const filteredBySemester = semesterFilter === '' ? [] : students.filter(s => {
+    if (semesterFilter === 'All') return true;
+    const semNum = semesterFilter.split(' ')[0].replace(/[^0-9]/g, '');
+    return String(s.semester) === semNum || String(s.semester) === semesterFilter;
+  });
 
   return (
     <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto', minHeight: '80vh' }}>
@@ -726,16 +742,51 @@ function TeacherProfile() {
                   <option value="Lecture 1">Lecture 1</option>
                   <option value="Lecture 2">Lecture 2</option>
                   <option value="Lecture 3">Lecture 3</option>
-                  <option value="Lecture 4">Lecture 4</option>
                   <option value="Extra Lecture">Extra Lecture</option>
                 </select>
-                {markingMode === 'manual' && (
-                  <button 
-                    onClick={handleSaveAttendance}
-                    style={{ background: '#8a2c20', color: 'white', border: 'none', padding: '8px 25px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 8px rgba(138,44,32,0.2)' }}
-                  >
-                    Save Attendance
-                  </button>
+                <select 
+                  value={selectedSubject} 
+                  onChange={(e) => setSelectedSubject(e.target.value)}
+                  style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', fontWeight: 600, color: '#8a2c20' }}
+                >
+                  <option value="">Select Subject</option>
+                  {(subjectMapping[filteredBySemester[0]?.course] && subjectMapping[filteredBySemester[0]?.course][semesterFilter.split(' ')[0]]) ? (
+                    subjectMapping[filteredBySemester[0]?.course][semesterFilter.split(' ')[0]].map(sub => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))
+                  ) : (
+                    <option value={teacher.primarySubject}>{teacher.primarySubject}</option>
+                  )}
+                </select>
+                {markingMode === 'manual' && filteredBySemester.length > 0 && (
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button 
+                      onClick={() => {
+                        const allPresent = {};
+                        filteredBySemester.forEach(s => allPresent[s.id] = 'Present');
+                        setAttendanceMarks(allPresent);
+                      }}
+                      style={{ background: '#e8f5e9', color: '#2e7d32', border: '1px solid #2e7d32', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+                    >
+                      ✓ All Present
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const allAbsent = {};
+                        filteredBySemester.forEach(s => allAbsent[s.id] = 'Absent');
+                        setAttendanceMarks(allAbsent);
+                      }}
+                      style={{ background: '#ffebee', color: '#c62828', border: '1px solid #c62828', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+                    >
+                      ✗ All Absent
+                    </button>
+                    <button 
+                      onClick={handleSaveAttendance}
+                      style={{ background: '#8a2c20', color: 'white', border: 'none', padding: '8px 25px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 8px rgba(138,44,32,0.2)' }}
+                    >
+                      Save Attendance
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -767,7 +818,7 @@ function TeacherProfile() {
                       </td>
                       <td style={tdStyle}>{s.enrollmentNumber}</td>
                       <td style={tdStyle}>{s.fullName}</td>
-                      <td style={tdStyle}>{teacher.primarySubject}</td>
+                      <td style={tdStyle}>{selectedSubject || teacher.primarySubject}</td>
                       <td style={tdStyle}>
                         <div style={{ display: 'flex', gap: '15px' }}>
                           <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
@@ -940,6 +991,8 @@ function TeacherProfile() {
                 <option value="6th Semester">6th Semester</option>
                 <option value="7th Semester">7th Semester</option>
                 <option value="8th Semester">8th Semester</option>
+                <option value="9th Semester">9th Semester</option>
+                <option value="10th Semester">10th Semester</option>
               </select>
             </div>
             

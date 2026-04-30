@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { subjectMapping } from '../utils/subjectMapping';
 import './StudentDashboard.css';
 
 function StudentDashboard() {
@@ -16,6 +17,8 @@ function StudentDashboard() {
   const [pwdUpdateMsg, setPwdUpdateMsg] = useState({ text: '', type: '' });
 
   const [activeView, setActiveView] = useState('attendance'); // 'attendance' or 'details'
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [selectedSubject, setSelectedSubject] = useState('All');
 
   useEffect(() => {
     const savedStudent = sessionStorage.getItem('loggedInStudent');
@@ -82,8 +85,32 @@ function StudentDashboard() {
   }
 
   const id = studentInfo._id || studentInfo.id;
-  const presentCount = attendanceRecords.filter(r => r.attendance?.[id] === 'Present').length;
-  const absentCount = attendanceRecords.filter(r => r.attendance?.[id] === 'Absent').length;
+  
+  // Get predefined subjects based on course and semester
+  const predefinedSubjects = (subjectMapping[studentInfo.course] && subjectMapping[studentInfo.course][studentInfo.semester]) || [];
+  
+  // Combine predefined subjects with subjects from existing attendance records
+  const subjects = ['All', ...new Set([...predefinedSubjects, ...attendanceRecords.map(r => r.subject || 'General')])];
+  
+  const filteredRecords = selectedSubject === 'All' 
+    ? attendanceRecords 
+    : attendanceRecords.filter(r => (r.subject || 'General') === selectedSubject);
+
+  const presentCount = filteredRecords.filter(r => r.attendance?.[id] === 'Present').length;
+  const absentCount = filteredRecords.filter(r => r.attendance?.[id] === 'Absent').length;
+
+  const currentYear = calendarDate.getFullYear();
+  const currentMonth = calendarDate.getMonth();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+
+  const prevMonth = () => {
+    setCalendarDate(new Date(currentYear, currentMonth - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCalendarDate(new Date(currentYear, currentMonth + 1, 1));
+  };
 
   return (
     <div className="dashboard-container">
@@ -141,6 +168,12 @@ function StudentDashboard() {
                       <label>Semester</label>
                       <select disabled><option>{studentInfo.semester}</option></select>
                     </div>
+                    <div className="filter-group">
+                      <label>Subject</label>
+                      <select value={selectedSubject} onChange={(e) => setSelectedSubject(e.target.value)}>
+                        {subjects.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
                     <button className="search-btn" onClick={() => fetchData(studentInfo)}>
                       <i className="fas fa-sync-alt"></i> Refresh
                     </button>
@@ -158,7 +191,7 @@ function StudentDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {attendanceRecords.sort((a,b) => new Date(b.date) - new Date(a.date)).map((r, idx) => (
+                      {filteredRecords.sort((a,b) => new Date(b.date) - new Date(a.date)).map((r, idx) => (
                         <tr key={idx}>
                           <td>{r.date}</td>
                           <td>{r.subject || 'General'}</td>
@@ -180,16 +213,37 @@ function StudentDashboard() {
 
               <div className="right-section">
                 <div className="card calendar-card">
-                  <h3 className="card-title">Calendar</h3>
+                  <div className="calendar-header">
+                    <h3 className="card-title" style={{ marginBottom: 0 }}>Calendar</h3>
+                    <div className="calendar-nav">
+                      <button onClick={prevMonth} className="nav-btn"><i className="fas fa-chevron-left"></i></button>
+                      <span className="current-month-display">
+                        {calendarDate.toLocaleString('default', { month: 'long' })} {currentYear}
+                      </span>
+                      <button onClick={nextMonth} className="nav-btn"><i className="fas fa-chevron-right"></i></button>
+                    </div>
+                  </div>
                   <div className="calendar-grid">
-                    {['S','M','T','W','T','F','S'].map(d => <div key={d} className="calendar-day-name">{d}</div>)}
-                    {[...Array(30)].map((_, i) => {
+                    {['S','M','T','W','T','F','S'].map((d, i) => <div key={`day-name-${i}`} className="calendar-day-name">{d}</div>)}
+                    {[...Array(firstDayOfMonth)].map((_, i) => (
+                      <div key={`empty-${i}`} className="calendar-day empty"></div>
+                    ))}
+                    {[...Array(daysInMonth)].map((_, i) => {
                       const day = i + 1;
-                      const dateStr = `2024-04-${String(day).padStart(2, '0')}`;
-                      const record = attendanceRecords.find(r => r.date === dateStr);
+                      const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                      const record = filteredRecords.find(r => r.date === dateStr);
                       const status = record?.attendance?.[id];
+                      
+                      const currentDayOfWeek = new Date(currentYear, currentMonth, day).getDay();
+                      const isWeekend = currentDayOfWeek === 0 || currentDayOfWeek === 6;
+                      
+                      let className = 'calendar-day';
+                      if (status === 'Present') className += ' active';
+                      else if (status === 'Absent') className += ' danger';
+                      else if (isWeekend) className += ' day-off';
+
                       return (
-                        <div key={day} className={`calendar-day ${status === 'Present' ? 'active' : status === 'Absent' ? 'danger' : ''}`}>
+                        <div key={day} className={className} title={isWeekend ? 'Day Off' : ''}>
                           {day}
                         </div>
                       );
@@ -200,7 +254,7 @@ function StudentDashboard() {
                 <div className="stats-container">
                   <div className="stat-card stat-yellow">
                     <div className="stat-icon">🎓</div>
-                    <div className="stat-info"><h4>{attendanceRecords.length}</h4><p>Total Classes</p></div>
+                    <div className="stat-info"><h4>{filteredRecords.length}</h4><p>Total Classes</p></div>
                   </div>
                   <div className="stat-card stat-green">
                     <div className="stat-icon">✅</div>
@@ -218,7 +272,7 @@ function StudentDashboard() {
               <div className="card">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '30px', marginBottom: '40px', borderBottom: '1px solid #eee', paddingBottom: '30px' }}>
                   <img 
-                    src={studentInfo.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(studentInfo.fullName)}&background=2ecc71&color=fff&size=128`} 
+                    src={studentInfo.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(studentInfo.fullName)}&background=8a2c20&color=fff&size=128`} 
                     alt="Profile" 
                     style={{ width: '120px', height: '120px', borderRadius: '50%', objectFit: 'cover', border: '4px solid #fff', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}
                   />
@@ -234,7 +288,7 @@ function StudentDashboard() {
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '40px' }}>
                   <div>
-                    <h3 style={{ color: '#2ecc71', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <h3 style={{ color: '#8a2c20', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <i className="fas fa-info-circle"></i> Personal Information
                     </h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>

@@ -13,6 +13,7 @@ import FormDepartment from './pages/from_department';
 import StudentFaceUpload from './pages/StudentFaceUpload';
 import StudentDashboard from './pages/StudentDashboard';
 import { useLocation } from 'react-router-dom';
+
 function App() {
   const location = useLocation();
   const hideNavbar = location.pathname === '/student-dashboard';

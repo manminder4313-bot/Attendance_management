@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { subjectMapping } from '../utils/subjectMapping';
+import { departments } from '../utils/departments';
 
 function FormStudent() {
   const [formData, setFormData] = useState({
@@ -10,8 +12,10 @@ function FormStudent() {
     gender: 'Select gender',
     dob: '',
     enrollmentNumber: '',
-    course: 'Select course',
-    semester: 'Select semester',
+    department: '',
+    course: '',
+    semester: '',
+    batchYear: '',
     profilePhoto: ''
   });
   const [loading, setLoading] = useState(false);
@@ -21,20 +25,36 @@ function FormStudent() {
   const isDepartmentLoggedIn = sessionStorage.getItem('isDepartmentLoggedIn') === 'true';
   const roleDepartmentData = isDepartmentLoggedIn ? JSON.parse(sessionStorage.getItem('loggedInDepartment')) : null;
   
+  // Autofill department if HOD is logged in
+  useEffect(() => {
+    if (isDepartmentLoggedIn && roleDepartmentData?.department) {
+      setFormData(prev => ({ ...prev, department: roleDepartmentData.department }));
+    }
+  }, [isDepartmentLoggedIn, roleDepartmentData]);
+  
   const allCourses = [
-    'BSE. Graphic',
-    'B.Tech Mechanical',
-    'B.Tech Civil',
-    'B.Tech Electrical',
-    'BCA',
-    'MCA',
-    'B.A in Computer science',
-    'B.Tech'
+    'BCA', 'MCA', 'BCA-MCA Integrated', 'B.Tech CSE', 'BA in Computer science', 'BSE. Graphic',
+    'B.Tech Mechanical', 'B.Tech Civil', 'B.Tech Electrical', 'B.Tech ECE',
+    'B.Tech Agricultural', 'B.Tech Chemical', 'B.Tech Food Tech', 'B.Tech Textile',
+    'B.Arch', 'B.Pharmacy', 'M.Pharmacy', 'MBA', 'BBA', 'B.Sc', 'M.Sc'
   ];
 
   const availableCourses = (isDepartmentLoggedIn && roleDepartmentData?.department) 
     ? api.departments.getCourses(roleDepartmentData.department)
-    : allCourses;
+    : (formData.department ? api.departments.getCourses(formData.department) : allCourses);
+
+  const getMaxSem = (course) => {
+    if (!course) return 8; // Default
+    if (course === 'MCA') return 4;
+    if (course === 'BCA-MCA Integrated') return 10;
+    if (course.includes('B.Tech')) return 8;
+    if (course.includes('B.Pharmacy')) return 8;
+    if (course.includes('B.Arch')) return 10;
+    if (course.includes('BCA')) return 6;
+    if (course.includes('BBA') || course.includes('B.Sc')) return 6;
+    if (course.includes('MBA') || course.includes('M.Sc')) return 4;
+    return 8;
+  };
 
   const compressImage = (file, callback) => {
     const reader = new FileReader();
@@ -56,15 +76,49 @@ function FormStudent() {
   };
 
   const handleChange = (e) => {
-    if (e.target.name === 'profilePhoto') {
+    const { name, value } = e.target;
+    if (name === 'profilePhoto') {
       const file = e.target.files[0];
       if (file) {
         compressImage(file, (compressedData) => {
-          setFormData({ ...formData, profilePhoto: compressedData });
+          setFormData(prev => ({ ...prev, profilePhoto: compressedData }));
         });
       }
     } else {
-      setFormData({ ...formData, [e.target.name]: e.target.value });
+      let formattedValue = value;
+      // Capitalize first letter logic for fullName and other descriptive fields
+      if (['fullName', 'primarySubject', 'qualification'].includes(name) && value.length > 0) {
+        formattedValue = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+      }
+
+      let updatedData = { ...formData, [name]: formattedValue };
+
+      // Auto-detect semester based on batchYear and current date
+      if (name === 'batchYear' || name === 'course') {
+        const bYear = name === 'batchYear' ? parseInt(value) : parseInt(formData.batchYear);
+        const course = name === 'course' ? value : formData.course;
+
+        if (bYear && course) {
+          const now = new Date();
+          const currentYear = now.getFullYear();
+          const currentMonth = now.getMonth(); // 0-11
+          
+          let yearsPassed = currentYear - bYear;
+          let semester = yearsPassed * 2;
+          if (currentMonth >= 6) { // July onwards is odd semester
+            semester += 1;
+          }
+
+          // Course duration logic
+          let maxSem = getMaxSem(course);
+
+          if (semester > maxSem) semester = maxSem;
+          if (semester <= 0) semester = 1;
+
+          updatedData.semester = semester.toString();
+        }
+      }
+      setFormData(updatedData);
     }
   };
 
@@ -72,8 +126,8 @@ function FormStudent() {
     e.preventDefault();
     setLoading(true);
 
-    const username = (formData.fullName.split(' ')[0].toLowerCase() + formData.phone.slice(-4)).replace(/[^a-z0-9]/g, '');
-    const password = Math.random().toString(36).slice(-8);
+    const username = formData.enrollmentNumber;
+    const password = "Mrsptu@12345";
 
     const studentData = {
       ...formData,
@@ -95,17 +149,8 @@ function FormStudent() {
   };
 
   return (
-    <div className="auth-container" style={{ 
-      backgroundImage: 'url("/IMAGES/mrsptu.webp")', 
-      backgroundSize: 'cover', 
-      backgroundPosition: 'center', 
-      backgroundRepeat: 'no-repeat', 
-      backgroundAttachment: 'fixed',
-      minHeight: '100vh',
-      width: '100%',
-      padding: '40px 20px'
-    }}>
-      <div className="form-box" style={{ maxWidth: '900px', background: 'rgba(255, 255, 255, 0.95)' }}>
+    <div className="auth-container">
+      <div className="form-box" style={{ maxWidth: '900px' }}>
         <h1>Student Registration Form</h1>
         <p style={{ textAlign: 'center', marginBottom: '30px', color: '#666' }}>Please fill all required information carefully</p>
 
@@ -158,6 +203,25 @@ function FormStudent() {
               <label>Enrollment / Roll Number</label>
               <input name="enrollmentNumber" type="text" placeholder="e.g. 123456789" onChange={handleChange} required />
             </div>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label>Department</label>
+              <select 
+                name="department" 
+                value={formData.department} 
+                onChange={handleChange} 
+                required
+                disabled={isDepartmentLoggedIn}
+                style={{ 
+                  background: isDepartmentLoggedIn ? '#f5f5f5' : 'white', 
+                  cursor: isDepartmentLoggedIn ? 'not-allowed' : 'pointer' 
+                }}
+              >
+                <option value="">Select Department</option>
+                {departments.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
@@ -170,19 +234,41 @@ function FormStudent() {
               </select>
             </div>
             <div className="form-group" style={{ flex: 1 }}>
+              <label>Semester</label>
+              <select name="semester" value={formData.semester} onChange={handleChange} required>
+                <option value="">Select semester</option>
+                {[...Array(getMaxSem(formData.course))].map((_, i) => (
+                  <option key={i+1} value={i+1}>{i+1}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group" style={{ flex: 1 }}>
               <label>Batch Year</label>
               <select 
-                name="semester" 
+                name="batchYear" 
+                value={formData.batchYear}
                 onChange={handleChange}
                 style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', background: 'white' }}
+                required
               >
-                <option value="">Select Batch Year</option>
+                <option value="">Select Year</option>
                 {Array.from({ length: new Date().getFullYear() - 2018 + 1 }, (_, i) => 2018 + i).map(year => (
                   <option key={year} value={year}>{year}</option>
                 ))}
               </select>
             </div>
           </div>
+
+          {formData.course && formData.semester && subjectMapping[formData.course]?.[formData.semester] && (
+            <div className="form-group" style={{ background: '#f9f9f9', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+              <label style={{ color: '#8a2c20', fontWeight: 'bold' }}>Auto-selected Subjects for {formData.course} Sem {formData.semester}:</label>
+              <ul style={{ margin: '10px 0 0', paddingLeft: '20px', fontSize: '14px', color: '#555' }}>
+                {subjectMapping[formData.course][formData.semester].map((sub, idx) => (
+                  <li key={idx}>{sub}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <button type="submit" className="btn-primary" disabled={loading}>
             {loading ? 'Submitting Details...' : 'Submit Details'}

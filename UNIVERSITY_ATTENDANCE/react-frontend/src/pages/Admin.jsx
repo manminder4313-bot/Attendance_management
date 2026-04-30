@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import api from '../services/api';
+import { departments } from '../utils/departments';
 
 function Admin() {
   const [submissions, setSubmissions] = useState([]);
@@ -31,9 +32,184 @@ function Admin() {
   const [statsSemesterFilter, setStatsSemesterFilter] = useState('');
   const [statsSubjectFilter, setStatsSubjectFilter] = useState('All');
 
+  // Teacher detail modal
+  const [showTeacherModal, setShowTeacherModal] = useState(false);
+  const [selectedTeacher, setSelectedTeacher] = useState(null);
+
+  // Student detail modal
+  const [showStudentModal, setShowStudentModal] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+
+  const viewStudentDetails = (student) => {
+    setSelectedStudent(student);
+    setShowStudentModal(true);
+  };
+
+  // Dept detail modal
+  const [showDeptModal, setShowDeptModal] = useState(false);
+  const [selectedDept, setSelectedDept] = useState(null);
+
+  const viewDeptDetails = (dept) => {
+    setSelectedDept(dept);
+    setShowDeptModal(true);
+  };
+
+  // Admin detail modal
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [selectedAdmin, setSelectedAdmin] = useState(null);
+
+  const viewAdminDetails = (admin) => {
+    setSelectedAdmin(admin);
+    setShowAdminModal(true);
+  };
+
+  const handleShare = (user, role) => {
+    const text = `*University Portal Credentials*\n\n` +
+                 `*Name:* ${user.fullName || user.headName || user.department}\n` +
+                 `*Role:* ${role.charAt(0).toUpperCase() + role.slice(1)}\n` +
+                 `*User ID:* ${user.username}\n` +
+                 `*Password:* ${user.password}\n\n` +
+                 `Login at: ${window.location.origin}/login\n\n` +
+                 `Please keep these details secure.`;
+    
+    if (navigator.share) {
+      navigator.share({
+        title: 'Portal Credentials',
+        text: text,
+      }).catch(() => {
+        // Fallback to clipboard if sharing is cancelled or fails
+        navigator.clipboard.writeText(text);
+        alert("Credentials copied to clipboard!");
+      });
+    } else {
+      navigator.clipboard.writeText(text);
+      alert("Details copied! Opening WhatsApp...");
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    }
+  };
+
 
 
   const navigate = useNavigate();
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [editFormData, setEditFormData] = useState({});
+
+  const handleUpdateDetails = async (type) => {
+    try {
+      const data = type === 'teacher' ? selectedTeacher : selectedStudent;
+      const updatedData = { ...data, ...editFormData };
+      
+      // If it's a student and enrollment number changed, update username too
+      if (type === 'student' && editFormData.enrollmentNumber) {
+        updatedData.username = editFormData.enrollmentNumber;
+      }
+
+      if (type === 'teacher') {
+        await api.teachers.update(updatedData.id, updatedData);
+        setSelectedTeacher(updatedData);
+      } else {
+        await api.students.update(updatedData.id, updatedData);
+        setSelectedStudent(updatedData);
+      }
+
+      setIsEditingDetails(false);
+      setEditFormData({});
+      alert("Details updated successfully!");
+      loadSubmissions();
+    } catch (err) {
+      console.error("Update failed:", err);
+      alert("Failed to update record.");
+    }
+  };
+  const normalizeSemesters = async () => {
+    if (!window.confirm("This will automatically recalculate semesters AND reset all passwords to 'Mrsptu@12345' for ALL students and teachers. Continue?")) return;
+    
+    try {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const DEFAULT_PWD = "Mrsptu@12345";
+      
+      console.log(`🚀 Starting Normalization... Current Date: ${now.toLocaleDateString()}`);
+      
+      let studentUpdates = 0;
+      let teacherUpdates = 0;
+
+      // 1. Normalize Students
+      const updatedStudents = await Promise.all(studentSubmissions.map(async (s) => {
+        try {
+          const bYear = parseInt(s.batchYear);
+          if (!bYear) return s;
+
+          let yearsPassed = currentYear - bYear;
+          let semester = yearsPassed * 2;
+          if (currentMonth >= 6) semester += 1;
+
+          const getMaxSem = (course) => {
+            if (!course) return 8;
+            if (course === 'MCA') return 4;
+            if (course === 'BCA-MCA Integrated') return 10;
+            if (course.includes('B.Tech') || course.includes('B.Pharmacy')) return 8;
+            if (course.includes('B.Arch')) return 10;
+            if (course.includes('BCA') || course.includes('BBA') || course.includes('B.Sc')) return 6;
+            return 8;
+          };
+
+          const maxSem = getMaxSem(s.course);
+          if (semester > maxSem) semester = maxSem;
+          if (semester <= 0) semester = 1;
+
+          const newSem = semester.toString();
+          const newUsername = s.enrollmentNumber || s.username;
+          
+          if (s.semester !== newSem || s.username !== newUsername || s.password !== DEFAULT_PWD) {
+            const updated = { ...s, semester: newSem, username: newUsername, password: DEFAULT_PWD };
+            const id = s._id || s.id;
+            if (!id) return s;
+            
+            await api.students.update(id, updated);
+            studentUpdates++;
+            return { ...updated, id };
+          }
+          return s;
+        } catch (e) {
+          console.error(`Failed to normalize student ${s.fullName}:`, e);
+          return s;
+        }
+      }));
+
+      // 2. Normalize Teachers
+      const updatedTeachers = await Promise.all(submissions.map(async (t) => {
+        try {
+          if (t.password !== DEFAULT_PWD) {
+            const updated = { ...t, password: DEFAULT_PWD };
+            const id = t._id || t.id;
+            if (!id) return t;
+
+            await api.teachers.update(id, updated);
+            teacherUpdates++;
+            return { ...updated, id };
+          }
+          return t;
+        } catch (e) {
+          console.error(`Failed to normalize teacher ${t.fullName}:`, e);
+          return t;
+        }
+      }));
+
+      console.log(`✅ Normalization Finished: ${studentUpdates} Students updated, ${teacherUpdates} Teachers updated.`);
+      
+      setStudentSubmissions(updatedStudents);
+      setSubmissions(updatedTeachers);
+      
+      alert(`Success!\n\n- ${studentUpdates} Students normalized\n- ${teacherUpdates} Teachers normalized\n\nAll records now use 'Mrsptu@12345' as password.`);
+      
+      loadSubmissions();
+    } catch (err) {
+      console.error("Normalization CRASHED:", err);
+      alert("Normalization failed. Check console for details.");
+    }
+  };
 
   const isAdminLoggedIn = sessionStorage.getItem('isAdminLoggedIn') === 'true';
   const isDepartmentLoggedIn = sessionStorage.getItem('isDepartmentLoggedIn') === 'true';
@@ -51,7 +227,7 @@ function Admin() {
     loadSubmissions();
   }, [navigate, isAdminLoggedIn, isDepartmentLoggedIn, activeTab]);
 
-  const loadSubmissions = async () => {
+  async function loadSubmissions() {
     try {
       const [teachers, students, depts, admins, recs] = await Promise.all([
         api.teachers.getAll(),
@@ -111,23 +287,38 @@ function Admin() {
     }
   };
 
-  const handleMemberPhotoChange = (e) => {
+  const handleMemberPhotoChange = async (e) => {
     const file = e.target.files[0];
     if (file && editingMember) {
-      compressImage(file, (compressedData) => {
+      compressImage(file, async (compressedData) => {
         const { id, type } = editingMember;
-        if (type === 'teacher') {
-          const updatedList = submissions.map(item => item.id === id ? { ...item, profilePhoto: compressedData } : item);
-          localStorage.setItem('teacherSubmissions', JSON.stringify(updatedList));
-          setSubmissions(updatedList);
-        } else if (type === 'student') {
-          const updatedList = studentSubmissions.map(item => item.id === id ? { ...item, profilePhoto: compressedData } : item);
-          localStorage.setItem('studentSubmissions', JSON.stringify(updatedList));
-          setStudentSubmissions(updatedList);
-        } else if (type === 'department') {
-          const updatedList = departmentSubmissions.map(item => item.id === id ? { ...item, profilePhoto: compressedData } : item);
-          localStorage.setItem('departmentSubmissions', JSON.stringify(updatedList));
-          setDepartmentSubmissions(updatedList);
+        try {
+          if (type === 'teacher') {
+            const member = submissions.find(t => t.id === id);
+            if (member) {
+              const updated = { ...member, profilePhoto: compressedData };
+              await api.teachers.update(id, updated);
+              setSubmissions(submissions.map(item => item.id === id ? updated : item));
+            }
+          } else if (type === 'student') {
+            const member = studentSubmissions.find(s => s.id === id);
+            if (member) {
+              const updated = { ...member, profilePhoto: compressedData };
+              await api.students.update(id, updated);
+              setStudentSubmissions(studentSubmissions.map(item => item.id === id ? updated : item));
+            }
+          } else if (type === 'department') {
+            const member = departmentSubmissions.find(d => d.id === id);
+            if (member) {
+              const updated = { ...member, profilePhoto: compressedData };
+              await api.departments.update(id, updated);
+              setDepartmentSubmissions(departmentSubmissions.map(item => item.id === id ? updated : item));
+            }
+          }
+          alert("Profile photo updated successfully!");
+        } catch (err) {
+          console.error("Failed to update photo:", err);
+          alert("Failed to save photo to database.");
         }
         setEditingMember(null);
       });
@@ -202,7 +393,7 @@ function Admin() {
     navigate('/department-form');
   };
 
-  const handleClearData = () => {
+  const handleClearData = async () => {
     if (!isDeleteMode) {
       setIsDeleteMode(true);
       return;
@@ -213,31 +404,37 @@ function Admin() {
       return;
     }
 
-    if (window.confirm('Are you sure you want to delete the selected submission data? This cannot be undone.')) {
-      if (activeTab === 'teachers') {
-        const remaining = submissions.filter(t => !selectedIds.includes(t.id));
-        localStorage.setItem('teacherSubmissions', JSON.stringify(remaining));
-        setSubmissions(remaining);
-      } else if (activeTab === 'students') {
-        const remaining = studentSubmissions.filter(s => !selectedIds.includes(s.id));
-        localStorage.setItem('studentSubmissions', JSON.stringify(remaining));
-        setStudentSubmissions(remaining);
-      } else if (activeTab === 'departments') {
-        const remaining = departmentSubmissions.filter(d => !selectedIds.includes(d.id));
-        localStorage.setItem('departmentSubmissions', JSON.stringify(remaining));
-        setDepartmentSubmissions(remaining);
-      } else if (activeTab === 'admins') {
-        const remaining = adminSubmissions.filter(a => !selectedIds.includes(a._id || a.uuid || a.username));
-        if (remaining.length === 0 && adminSubmissions.length > 0) {
-          alert("Cannot delete all master admins. The system requires at least one admin account to remain accessible.");
-          setIsDeleteMode(false);
-          return;
-        }
-        localStorage.setItem('adminCredentials', JSON.stringify(remaining));
-        setAdminSubmissions(remaining);
+    if (window.confirm(`Are you sure you want to delete ${selectedIds.length} selected records? This cannot be undone.`)) {
+      try {
+        console.log(`🗑️ Deleting ${selectedIds.length} items from ${activeTab}... IDs:`, selectedIds);
+        
+        let successCount = 0;
+        let failCount = 0;
+
+        await Promise.all(selectedIds.map(async (id) => {
+          try {
+            if (activeTab === 'teachers') await api.teachers.delete(id);
+            else if (activeTab === 'students') await api.students.delete(id);
+            else if (activeTab === 'departments') await api.departments.delete(id);
+            else if (activeTab === 'admins') await api.admins.delete(id);
+            else if (activeTab === 'attendance_history') await api.attendance.delete(id);
+            successCount++;
+          } catch (e) {
+            console.error(`Failed to delete ID ${id}:`, e);
+            failCount++;
+          }
+        }));
+
+        alert(`Deletion complete!\n- Success: ${successCount}\n- Failed: ${failCount}`);
+        
+        // Final cleanup
+        setSelectedIds([]);
+        setIsDeleteMode(false);
+        loadSubmissions();
+      } catch (err) {
+        console.error('Deletion process crashed:', err);
+        alert(`Deletion failed: ${err.message || 'Server error'}`);
       }
-      setSelectedIds([]);
-      setIsDeleteMode(false);
     }
   };
 
@@ -252,12 +449,17 @@ function Admin() {
     .sort((a, b) => (a.enrollmentNumber || '').localeCompare(b.enrollmentNumber || '', undefined, { numeric: true }));
 
   const handleSelectAll = (e) => {
-    const currentData = activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? departmentSubmissions : adminSubmissions;
+    const currentData = activeTab === 'teachers' ? filteredTeachers 
+      : activeTab === 'students' ? filteredStudents 
+      : activeTab === 'departments' ? departmentSubmissions 
+      : activeTab === 'attendance_history' ? attendanceRecords
+      : adminSubmissions;
+
     if (e.target.checked) {
       if (activeTab === 'admins') {
         setSelectedIds(currentData.filter(a => a.username !== 'Adminmanminder').map(t => t._id || t.uuid || t.username));
       } else {
-        setSelectedIds(currentData.map(t => t.id));
+        setSelectedIds(currentData.map(t => t._id || t.id));
       }
     } else {
       setSelectedIds([]);
@@ -273,7 +475,8 @@ function Admin() {
   };
 
   const viewDetails = (teacher) => {
-    alert(`Bio for ${teacher.fullName}:\n\n${teacher.bio || "No bio provided."}`);
+    setSelectedTeacher(teacher);
+    setShowTeacherModal(true);
   };
 
   const handleDownloadPDF = () => {
@@ -335,6 +538,7 @@ function Admin() {
               </button>
             </>
           )}
+          <button onClick={normalizeSemesters} style={{ background: '#34495e', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginRight: '10px' }}>Normalize Data</button>
           <button onClick={handleClearData} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', marginRight: '10px' }}>
             {isDeleteMode ? (selectedIds.length > 0 ? `Delete (${selectedIds.length})` : 'Cancel') : 'Clear Data'}
           </button>
@@ -347,14 +551,14 @@ function Admin() {
       <div className="admin-tabs-container">
         <div className="admin-tabs">
           <button
-            onClick={() => { setActiveTab('teachers'); setSelectedIds([]); setIsDeleteMode(false); }}
-            style={{ padding: '10px 20px', border: 'none', background: 'none', borderBottom: activeTab === 'teachers' ? '3px solid var(--primary)' : 'none', color: activeTab === 'teachers' ? 'var(--primary)' : '#666', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>
-            Teacher Submissions
-          </button>
-          <button
             onClick={() => { setActiveTab('students'); setSelectedIds([]); setIsDeleteMode(false); }}
             style={{ padding: '10px 20px', border: 'none', background: 'none', borderBottom: activeTab === 'students' ? '3px solid var(--primary)' : 'none', color: activeTab === 'students' ? 'var(--primary)' : '#666', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>
             Student Submissions
+          </button>
+          <button
+            onClick={() => { setActiveTab('teachers'); setSelectedIds([]); setIsDeleteMode(false); }}
+            style={{ padding: '10px 20px', border: 'none', background: 'none', borderBottom: activeTab === 'teachers' ? '3px solid var(--primary)' : 'none', color: activeTab === 'teachers' ? 'var(--primary)' : '#666', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>
+            Teacher Submissions
           </button>
           {!isDepartmentLoggedIn && (
             <>
@@ -377,6 +581,11 @@ function Admin() {
               Attendance Stats
             </button>
           )}
+          <button
+            onClick={() => { setActiveTab('attendance_history'); setSelectedIds([]); setIsDeleteMode(false); }}
+            style={{ padding: '10px 20px', border: 'none', background: 'none', borderBottom: activeTab === 'attendance_history' ? '3px solid var(--primary)' : 'none', color: activeTab === 'attendance_history' ? 'var(--primary)' : '#666', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>
+            Attendance History
+          </button>
         </div>
 
         <div className="admin-filters">
@@ -388,11 +597,9 @@ function Admin() {
             ) : (
               <select value={departmentFilter} onChange={(e) => { setDepartmentFilter(e.target.value); setSelectedIds([]); }} style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }}>
                 <option value="All">All Departments</option>
-                <option value="Mathematics">Mathematics</option>
-                <option value="Computer Science">Computer Science</option>
-                <option value="Physics">Physics</option>
-                <option value="Chemistry">Chemistry</option>
-                <option value="Biology">Biology</option>
+                {departments.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
               </select>
             )
           ) : activeTab === 'students' ? (
@@ -418,6 +625,74 @@ function Admin() {
           <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-light)', fontStyle: 'italic' }}>
             No {activeTab} submissions found.
           </div>
+          ) : activeTab === 'students' ? (
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr>
+                  {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={filteredStudents.length > 0 && selectedIds.length === filteredStudents.length} /></th>}
+                  <th style={thStyle}>Reg. Photo</th>
+                  <th style={thStyle}>Date</th>
+                  <th style={thStyle}>Full Name</th>
+                  <th style={thStyle}>Email</th>
+                  <th style={thStyle}>Course</th>
+                  <th style={thStyle}>Batch</th>
+                  <th style={thStyle}>Roll No</th>
+                  <th style={thStyle}>Attendance %</th>
+                  <th style={thStyle}>Enrolled Face</th>
+                  <th style={thStyle}>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStudents.map((s) => (
+                  <tr key={s.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(s.id) ? '#f0f8ff' : 'transparent' }}>
+                    {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => handleSelect(s.id)} /></td>}
+
+                    <td style={tdStyle}>
+                      <div style={{ position: 'relative', display: 'inline-block' }}>
+                        {s.profilePhoto ? (
+                          <img src={s.profilePhoto} alt="Profile" className="profile-thumb" />
+                        ) : (
+                          <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{s.fullName?.charAt(0).toUpperCase()}</div>
+                        )}
+                        <div
+                          onClick={() => triggerMemberPhotoEdit(s.id, 'student')}
+                          style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
+                        >
+                          📷
+                        </div>
+                      </div>
+                    </td>
+                    <td style={tdStyle}>{s.createdAt || s.registrationDate ? new Date(s.createdAt || s.registrationDate).toLocaleString() : (s.submissionDate || 'N/A')}</td>
+                    <td style={{ ...tdStyle, fontWeight: 600 }}>{s.fullName}</td>
+                    <td style={tdStyle}>{s.email}</td>
+                    <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{s.course}</span></td>
+                    <td style={tdStyle}>{s.batchYear}</td>
+                    <td style={tdStyle}>{s.enrollmentNumber}</td>
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '60px', height: '6px', background: '#eee', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ width: `${api.attendance.getStats(attendanceRecords, s.id).percentage}%`, height: '100%', background: api.attendance.getStats(attendanceRecords, s.id).percentage >= 75 ? '#27ae60' : '#e74c3c' }}></div>
+                        </div>
+                        <span style={{ fontWeight: 'bold', color: api.attendance.getStats(attendanceRecords, s.id).percentage >= 60 ? '#27ae60' : '#e74c3c' }}>
+                          {api.attendance.getStats(attendanceRecords, s.id).percentage}%
+                        </span>
+                      </div>
+                    </td>
+
+                    <td style={tdStyle}>
+                      {s.enrolledFace ? (
+                        <img src={s.enrolledFace} alt="Enrolled" className="profile-thumb" style={{ border: '2px solid #27ae60' }} />
+                      ) : (
+                        <div className="profile-thumb" style={{ background: '#fff3f3', border: '1px dashed #e74c3c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#e74c3c' }}>Missing</div>
+                      )}
+                    </td>
+                    <td style={tdStyle}>
+                      <button onClick={() => viewStudentDetails(s)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
         ) : (
           activeTab === 'teachers' ? (
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -431,8 +706,6 @@ function Admin() {
                   <th style={thStyle}>Phone</th>
                   <th style={thStyle}>Subject</th>
                   <th style={thStyle}>Exp. (Yrs)</th>
-                  <th style={thStyle}>Username</th>
-                  <th style={thStyle}>Password</th>
                   <th style={thStyle}>Department</th>
                   <th style={thStyle}>Details</th>
 
@@ -463,79 +736,9 @@ function Admin() {
                     <td style={tdStyle}>{t.phone}</td>
                     <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{t.primarySubject}</span></td>
                     <td style={tdStyle}>{t.experience || '0'}</td>
-                    <td style={{ ...tdStyle, color: '#27ae60', fontWeight: 600 }}>{t.username || 'N/A'}</td>
-                    <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{t.password || 'N/A'}</td>
                     <td style={tdStyle}>{t.department || 'N/A'}</td>
                     <td style={tdStyle}>
-                      <button onClick={() => viewDetails(t)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline' }}>View Bio</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : activeTab === 'students' ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr>
-                  {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={filteredStudents.length > 0 && selectedIds.length === filteredStudents.length} /></th>}
-                  <th style={thStyle}>Reg. Photo</th>
-                  <th style={thStyle}>Date</th>
-                  <th style={thStyle}>Full Name</th>
-                  <th style={thStyle}>Email</th>
-                  <th style={thStyle}>Course</th>
-                  <th style={thStyle}>Semester</th>
-                  <th style={thStyle}>Roll No</th>
-                  <th style={thStyle}>User ID</th>
-                  <th style={thStyle}>Password</th>
-                  <th style={thStyle}>Attendance %</th>
-                  <th style={thStyle}>Enrolled Face</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredStudents.map((s) => (
-                  <tr key={s.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(s.id) ? '#f0f8ff' : 'transparent' }}>
-                    {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => handleSelect(s.id)} /></td>}
-
-                    <td style={tdStyle}>
-                      <div style={{ position: 'relative', display: 'inline-block' }}>
-                        {s.profilePhoto ? (
-                          <img src={s.profilePhoto} alt="Profile" className="profile-thumb" />
-                        ) : (
-                          <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{s.fullName?.charAt(0).toUpperCase()}</div>
-                        )}
-                        <div
-                          onClick={() => triggerMemberPhotoEdit(s.id, 'student')}
-                          style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
-                        >
-                          📷
-                        </div>
-                      </div>
-                    </td>
-                    <td style={tdStyle}>{s.createdAt || s.registrationDate ? new Date(s.createdAt || s.registrationDate).toLocaleString() : (s.submissionDate || 'N/A')}</td>
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>{s.fullName}</td>
-                    <td style={tdStyle}>{s.email}</td>
-                    <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{s.course}</span></td>
-                    <td style={tdStyle}>{s.semester}</td>
-                    <td style={tdStyle}>{s.enrollmentNumber}</td>
-                    <td style={{ ...tdStyle, color: '#27ae60', fontWeight: 600 }}>{s.username || 'N/A'}</td>
-                    <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{s.password || 'N/A'}</td>
-                    <td style={tdStyle}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ width: '60px', height: '6px', background: '#eee', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{ width: `${api.attendance.getStats(attendanceRecords, s.id).percentage}%`, height: '100%', background: api.attendance.getStats(attendanceRecords, s.id).percentage >= 75 ? '#27ae60' : '#e74c3c' }}></div>
-                        </div>
-                        <span style={{ fontWeight: 'bold', color: api.attendance.getStats(attendanceRecords, s.id).percentage >= 60 ? '#27ae60' : '#e74c3c' }}>
-                          {api.attendance.getStats(attendanceRecords, s.id).percentage}%
-                        </span>
-                      </div>
-                    </td>
-
-                    <td style={tdStyle}>
-                      {s.enrolledFace ? (
-                        <img src={s.enrolledFace} alt="Enrolled" className="profile-thumb" style={{ border: '2px solid #27ae60' }} />
-                      ) : (
-                        <div className="profile-thumb" style={{ background: '#fff3f3', border: '1px dashed #e74c3c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#e74c3c' }}>Missing</div>
-                      )}
+                      <button onClick={() => viewDetails(t)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
                     </td>
                   </tr>
                 ))}
@@ -547,13 +750,12 @@ function Admin() {
                 <tr>
                   {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={departmentSubmissions.length > 0 && selectedIds.length === departmentSubmissions.length} /></th>}
                   <th style={thStyle}>Date</th>
+                  <th style={thStyle}>Photo</th>
                   <th style={thStyle}>Head Name</th>
                   <th style={thStyle}>Email</th>
                   <th style={thStyle}>Phone</th>
                   <th style={thStyle}>Department</th>
-                  <th style={thStyle}>Username</th>
-                  <th style={thStyle}>Password</th>
-                  <th style={thStyle}>Photo</th>
+                  <th style={thStyle}>Details</th>
                 </tr>
               </thead>
               <tbody>
@@ -561,26 +763,27 @@ function Admin() {
                   <tr key={d.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(d.id) ? '#f0f8ff' : 'transparent' }}>
                     {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(d.id)} onChange={() => handleSelect(d.id)} /></td>}
                     <td style={tdStyle}>{d.createdAt ? new Date(d.createdAt).toLocaleString() : (d.submissionDate || 'N/A')}</td>
+                    <td style={tdStyle}>
+                       <div style={{ position: 'relative', display: 'inline-block' }}>
+                         {d.profilePhoto ? (
+                           <img src={d.profilePhoto} alt="Profile" className="profile-thumb" />
+                         ) : (
+                           <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{d.headName?.charAt(0).toUpperCase()}</div>
+                         )}
+                         <div
+                           onClick={() => triggerMemberPhotoEdit(d.id, 'department')}
+                           style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
+                         >
+                           📷
+                         </div>
+                       </div>
+                     </td>
                     <td style={{ ...tdStyle, fontWeight: 600 }}>{d.headName}</td>
                     <td style={tdStyle}>{d.email}</td>
                     <td style={tdStyle}>{d.phone}</td>
                     <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{d.department}</span></td>
-                    <td style={{ ...tdStyle, color: '#27ae60', fontWeight: 600 }}>{d.username || 'N/A'}</td>
-                    <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{d.password || 'N/A'}</td>
                     <td style={tdStyle}>
-                      <div style={{ position: 'relative', display: 'inline-block' }}>
-                        {d.profilePhoto ? (
-                          <img src={d.profilePhoto} alt="Profile" className="profile-thumb" />
-                        ) : (
-                          <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{d.headName?.charAt(0).toUpperCase()}</div>
-                        )}
-                        <div
-                          onClick={() => triggerMemberPhotoEdit(d.id, 'department')}
-                          style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
-                        >
-                          📷
-                        </div>
-                      </div>
+                      <button onClick={() => viewDeptDetails(d)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
                     </td>
                   </tr>
                 ))}
@@ -596,8 +799,7 @@ function Admin() {
                   <th style={thStyle}>Full Name</th>
                   <th style={thStyle}>Email</th>
                   <th style={thStyle}>Phone</th>
-                  <th style={thStyle}>Username</th>
-                  <th style={thStyle}>Password</th>
+                  <th style={thStyle}>Details</th>
                 </tr>
               </thead>
               <tbody>
@@ -617,9 +819,9 @@ function Admin() {
                     <td style={{ ...tdStyle, fontWeight: 600 }}>{a.fullName || 'Admin User'}</td>
                     <td style={tdStyle}>{a.email}</td>
                     <td style={tdStyle}>{a.contact}</td>
-                    <td style={{ ...tdStyle, color: '#27ae60', fontWeight: 600 }}>{a.username || 'N/A'}</td>
-                    <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{a.password}</td>
-
+                    <td style={tdStyle}>
+                      <button onClick={() => viewAdminDetails(a)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -808,6 +1010,38 @@ function Admin() {
                 </>
               )}
             </div>
+          ) : activeTab === 'attendance_history' ? (
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr>
+                  {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={attendanceRecords.length > 0 && selectedIds.length === attendanceRecords.length} /></th>}
+                  <th style={thStyle}>Date</th>
+                  <th style={thStyle}>Subject</th>
+                  <th style={thStyle}>Teacher</th>
+                  <th style={thStyle}>Present</th>
+                  <th style={thStyle}>Total</th>
+                  <th style={thStyle}>Department</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attendanceRecords.sort((a,b) => new Date(b.date) - new Date(a.date)).map((r) => {
+                  const id = r._id || r.id;
+                  const presentCount = Object.values(r.attendance || {}).filter(v => v === 'Present').length;
+                  const totalCount = Object.keys(r.attendance || {}).length;
+                  return (
+                    <tr key={id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(id) ? '#f0f8ff' : 'transparent' }}>
+                      {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(id)} onChange={() => handleSelect(id)} /></td>}
+                      <td style={tdStyle}>{r.dateDisplay || r.date}</td>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{r.subject}</td>
+                      <td style={tdStyle}>{r.teacherName}</td>
+                      <td style={{ ...tdStyle, color: '#27ae60', fontWeight: 'bold' }}>{presentCount}</td>
+                      <td style={tdStyle}>{totalCount}</td>
+                      <td style={tdStyle}>{r.department}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           ) : null
         )}
       </div>
@@ -895,6 +1129,282 @@ function Admin() {
         </div>
       )}
 
+      {/* Teacher Detail Modal */}
+      {showTeacherModal && selectedTeacher && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
+          <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', position: 'relative' }}>
+            <button onClick={() => setShowTeacherModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
+            
+            <div style={{ display: 'flex', gap: '25px', borderBottom: '2px solid #eee', paddingBottom: '20px', marginBottom: '20px' }}>
+              <img src={selectedTeacher.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '120px', height: '120px', borderRadius: '12px', objectFit: 'cover', border: '3px solid var(--primary)' }} />
+              <div style={{ flex: 1 }}>
+                {isEditingDetails ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <input 
+                      type="text" 
+                      defaultValue={selectedTeacher.fullName} 
+                      onChange={(e) => {
+                        let val = e.target.value;
+                        if (val.length > 0) val = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+                        setEditFormData({ ...editFormData, fullName: val });
+                      }}
+                      style={{ fontSize: '24px', fontWeight: 'bold', padding: '5px 10px', borderRadius: '8px', border: '1px solid #ddd' }}
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <input type="text" defaultValue={selectedTeacher.email} onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })} placeholder="Email" style={editInputStyle} />
+                      <input type="text" defaultValue={selectedTeacher.phone} onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} placeholder="Phone" style={editInputStyle} />
+                      <input type="text" defaultValue={selectedTeacher.qualification} onChange={(e) => setEditFormData({ ...editFormData, qualification: e.target.value })} placeholder="Qualification" style={editInputStyle} />
+                      <select defaultValue={selectedTeacher.department} onChange={(e) => setEditFormData({ ...editFormData, department: e.target.value })} style={editInputStyle}>
+                        {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <h2 style={{ margin: '0 0 5px 0', color: 'var(--primary)', fontSize: '28px' }}>{selectedTeacher.fullName}</h2>
+                    <p style={{ margin: '0 0 15px 0', color: '#666', fontWeight: 'bold', fontSize: '18px' }}>{selectedTeacher.qualification} • {selectedTeacher.department}</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '14px', background: '#f8f9fa', padding: '15px', borderRadius: '10px' }}>
+                      <div style={{ color: '#555' }}><strong>Email:</strong> {selectedTeacher.email}</div>
+                      <div style={{ color: '#555' }}><strong>Phone:</strong> {selectedTeacher.phone}</div>
+                      <div style={{ color: '#555' }}><strong>DOB:</strong> {selectedTeacher.dob || 'N/A'}</div>
+                      <div style={{ color: '#555' }}><strong>Gender:</strong> {selectedTeacher.gender || 'N/A'}</div>
+                      <div style={{ color: '#555' }}><strong>Experience:</strong> {selectedTeacher.experience} Years</div>
+                      <div style={{ color: '#555' }}><strong>Primary Subject:</strong> {selectedTeacher.primarySubject}</div>
+                    </div>
+                  </>
+                )}
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '14px', marginTop: '10px' }}>
+                  <div style={{ color: '#27ae60', background: '#e8f5e9', padding: '8px 12px', borderRadius: '8px' }}>
+                    <strong>Portal Username:</strong> {selectedTeacher.username}
+                  </div>
+                  <div style={{ color: '#e67e22', background: '#fff3e0', padding: '8px 12px', borderRadius: '8px' }}>
+                    <strong>Portal Password:</strong> <code style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{selectedTeacher.password}</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
+              {isEditingDetails ? (
+                <>
+                  <button 
+                    onClick={() => handleUpdateDetails('teacher')}
+                    style={{ background: '#27ae60', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Save Changes ✅
+                  </button>
+                  <button 
+                    onClick={() => { setIsEditingDetails(false); setEditFormData({}); }}
+                    style={{ background: '#666', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button 
+                    onClick={() => setIsEditingDetails(true)}
+                    style={{ background: '#3498db', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Edit Details ✏️
+                  </button>
+                  <button 
+                    onClick={() => handleShare(selectedTeacher, 'Teacher')}
+                    style={{ background: '#25D366', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Share 📲
+                  </button>
+                  <button 
+                    onClick={() => setShowTeacherModal(false)}
+                    style={{ background: '#333', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Close
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Student Detail Modal */}
+      {showStudentModal && selectedStudent && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
+          <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', position: 'relative' }}>
+            <button onClick={() => setShowStudentModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
+            
+            <div style={{ display: 'flex', gap: '25px', borderBottom: '2px solid #eee', paddingBottom: '20px', marginBottom: '20px' }}>
+              <img src={selectedStudent.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '110px', height: '110px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--primary)' }} />
+              <div style={{ flex: 1 }}>
+                {isEditingDetails ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <input 
+                      type="text" 
+                      defaultValue={selectedStudent.fullName} 
+                      onChange={(e) => {
+                        let val = e.target.value;
+                        if (val.length > 0) val = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+                        setEditFormData({ ...editFormData, fullName: val });
+                      }}
+                      style={{ fontSize: '24px', fontWeight: 'bold', padding: '5px 10px', borderRadius: '8px', border: '1px solid #ddd' }}
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <input type="text" defaultValue={selectedStudent.enrollmentNumber} onChange={(e) => setEditFormData({ ...editFormData, enrollmentNumber: e.target.value })} placeholder="Roll No" style={editInputStyle} />
+                      <input type="text" defaultValue={selectedStudent.course} onChange={(e) => setEditFormData({ ...editFormData, course: e.target.value })} placeholder="Course" style={editInputStyle} />
+                      <input type="text" defaultValue={selectedStudent.batchYear} onChange={(e) => setEditFormData({ ...editFormData, batchYear: e.target.value })} placeholder="Batch Year" style={editInputStyle} />
+                      <input type="text" defaultValue={selectedStudent.semester} onChange={(e) => setEditFormData({ ...editFormData, semester: e.target.value })} placeholder="Semester" style={editInputStyle} />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <h2 style={{ margin: '0 0 5px 0', color: 'var(--primary)', fontSize: '26px' }}>{selectedStudent.fullName}</h2>
+                    <p style={{ margin: '0 0 10px 0', color: '#666', fontWeight: 'bold' }}>{selectedStudent.course} • Semester {selectedStudent.semester}</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', fontSize: '14px', background: '#f8f9fa', padding: '15px', borderRadius: '10px' }}>
+                      <div style={{ color: '#555' }}><strong>Enrollment / Roll No:</strong> {selectedStudent.enrollmentNumber}</div>
+                      <div style={{ color: '#555' }}><strong>Email:</strong> {selectedStudent.email}</div>
+                    </div>
+                  </>
+                )}
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '14px', marginTop: '10px' }}>
+                  <div style={{ color: '#27ae60', background: '#e8f5e9', padding: '8px 12px', borderRadius: '8px' }}>
+                    <strong>Portal User ID:</strong> {selectedStudent.username}
+                  </div>
+                  <div style={{ color: '#e67e22', background: '#fff3e0', padding: '8px 12px', borderRadius: '8px' }}>
+                    <strong>Portal Password:</strong> <code style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{selectedStudent.password}</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
+              {isEditingDetails ? (
+                <>
+                  <button 
+                    onClick={() => handleUpdateDetails('student')}
+                    style={{ background: '#27ae60', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Save Changes ✅
+                  </button>
+                  <button 
+                    onClick={() => { setIsEditingDetails(false); setEditFormData({}); }}
+                    style={{ background: '#666', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button 
+                    onClick={() => setIsEditingDetails(true)}
+                    style={{ background: '#3498db', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Edit Details ✏️
+                  </button>
+                  <button 
+                    onClick={() => handleShare(selectedStudent, 'Student')}
+                    style={{ background: '#25D366', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Share 📲
+                  </button>
+                  <button 
+                    onClick={() => setShowStudentModal(false)}
+                    style={{ background: '#333', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    Close
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Department Detail Modal */}
+      {showDeptModal && selectedDept && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
+          <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', position: 'relative' }}>
+            <button onClick={() => setShowDeptModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
+            
+            <div style={{ display: 'flex', gap: '25px', borderBottom: '2px solid #eee', paddingBottom: '20px', marginBottom: '20px' }}>
+              <img src={selectedDept.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '110px', height: '110px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--primary)' }} />
+              <div style={{ flex: 1 }}>
+                <h2 style={{ margin: '0 0 5px 0', color: 'var(--primary)', fontSize: '26px' }}>{selectedDept.department}</h2>
+                <p style={{ margin: '0 0 10px 0', color: '#666', fontWeight: 'bold' }}>Head: {selectedDept.headName}</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', fontSize: '14px', background: '#f8f9fa', padding: '15px', borderRadius: '10px' }}>
+                  <div style={{ color: '#555' }}><strong>HOD Email:</strong> {selectedDept.email}</div>
+                  <div style={{ color: '#555' }}><strong>HOD Phone:</strong> {selectedDept.phone}</div>
+                  <div style={{ color: '#27ae60', background: '#e8f5e9', padding: '5px 10px', borderRadius: '5px' }}>
+                    <strong>Portal Username:</strong> {selectedDept.username}
+                  </div>
+                  <div style={{ color: '#e67e22', background: '#fff3e0', padding: '5px 10px', borderRadius: '5px' }}>
+                    <strong>Portal Password:</strong> <code style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{selectedDept.password}</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20px', gap: '15px' }}>
+              <button 
+                onClick={() => handleShare(selectedDept, 'Department HOD')}
+                style={{ background: '#25D366', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                Share Details 📲
+              </button>
+              <button 
+                onClick={() => setShowDeptModal(false)}
+                style={{ background: '#333', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                Close Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Detail Modal */}
+      {showAdminModal && selectedAdmin && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
+          <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', position: 'relative' }}>
+            <button onClick={() => setShowAdminModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
+            
+            <div style={{ display: 'flex', gap: '25px', borderBottom: '2px solid #eee', paddingBottom: '20px', marginBottom: '20px' }}>
+              <img src={selectedAdmin.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--primary)' }} />
+              <div style={{ flex: 1 }}>
+                <h2 style={{ margin: '0 0 5px 0', color: 'var(--primary)', fontSize: '24px' }}>{selectedAdmin.fullName || 'Admin User'}</h2>
+                <p style={{ margin: '0 0 10px 0', color: '#666', fontWeight: 'bold' }}>Master Administrative Account</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', fontSize: '14px', background: '#f8f9fa', padding: '15px', borderRadius: '10px' }}>
+                  <div style={{ color: '#555' }}><strong>Admin Email:</strong> {selectedAdmin.email}</div>
+                  <div style={{ color: '#555' }}><strong>Admin Contact:</strong> {selectedAdmin.contact}</div>
+                  <div style={{ color: '#27ae60', background: '#e8f5e9', padding: '5px 10px', borderRadius: '5px' }}>
+                    <strong>System Username:</strong> {selectedAdmin.username}
+                  </div>
+                  <div style={{ color: '#e67e22', background: '#fff3e0', padding: '5px 10px', borderRadius: '5px' }}>
+                    <strong>System Password:</strong> <code style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{selectedAdmin.password}</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20px', gap: '15px' }}>
+              <button 
+                onClick={() => handleShare(selectedAdmin, 'Master Admin')}
+                style={{ background: '#25D366', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                Share Details 📲
+              </button>
+              <button 
+                onClick={() => setShowAdminModal(false)}
+                style={{ background: '#333', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                Close Admin View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .profile-thumb {
           width: 40px;
@@ -917,5 +1427,6 @@ function Admin() {
 
 const thStyle = { background: '#f8f9fa', color: '#666', fontWeight: 600, padding: '15px 20px', borderBottom: '2px solid #eee', textTransform: 'uppercase', fontSize: '12px' };
 const tdStyle = { padding: '15px 20px', fontSize: '14px' };
+const editInputStyle = { padding: '8px 12px', borderRadius: '8px', border: '1px solid #ddd', width: '100%', fontSize: '14px', marginTop: '5px' };
 
 export default Admin;

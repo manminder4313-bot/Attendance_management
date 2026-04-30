@@ -242,6 +242,74 @@ app.post('/api/attendance', async (req, res) => {
   }
 });
 
+// DELETE ROUTES
+app.delete('/api/admins/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const query = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { username: id };
+    const admin = await Admin.findOneAndDelete(query);
+    if (!admin) return res.status(404).json({ message: 'Admin not found' });
+    res.json({ message: 'Admin deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/teachers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const query = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { username: id };
+    const teacher = await Teacher.findOneAndDelete(query);
+    if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
+    res.json({ message: 'Teacher deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/students/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const query = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { $or: [{ enrollmentNumber: id }, { username: id }] };
+    const student = await Student.findOneAndDelete(query);
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+    res.json({ message: 'Student deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/departments/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const query = mongoose.Types.ObjectId.isValid(id) ? { _id: id } : { username: id };
+    const dept = await Department.findOneAndDelete(query);
+    if (!dept) return res.status(404).json({ message: 'Department not found' });
+    res.json({ message: 'Department deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/attendance/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`🗑️ Attempting to delete attendance record: ${id}`);
+    
+    const record = await Attendance.findByIdAndDelete(id);
+    if (!record) {
+      console.warn(`⚠️ Attendance record not found for deletion: ${id}`);
+      return res.status(404).json({ message: 'Record not found' });
+    }
+    
+    console.log(`✅ Successfully deleted attendance record: ${id}`);
+    res.json({ message: 'Attendance record deleted successfully' });
+  } catch (err) {
+    console.error(`💥 Error deleting attendance record (${id}):`, err.message);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // LOGIN
 app.post('/api/login', async (req, res) => {
   const { id, password } = req.body;

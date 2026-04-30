@@ -5,6 +5,7 @@ import autoTable from 'jspdf-autotable';
 export const attendanceService = {
   getAll: () => fetchApi('/attendance'),
   create: (data) => fetchApi('/attendance', { method: 'POST', body: JSON.stringify(data) }),
+  delete: (id) => fetchApi(`/attendance/${id}`, { method: 'DELETE' }),
   
   getStats: (attendanceRecords, studentId) => {
     const studentRecords = attendanceRecords.filter(r => r.attendance?.[studentId]);

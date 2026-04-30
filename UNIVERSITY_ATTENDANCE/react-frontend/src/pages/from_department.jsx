@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { departments } from '../utils/departments';
 
 function FormDepartment() {
   const [formData, setFormData] = useState({
@@ -41,7 +42,11 @@ function FormDepartment() {
         });
       }
     } else {
-      setFormData({ ...formData, [e.target.name]: e.target.value });
+      let formattedValue = e.target.value;
+      if (['headName', 'department'].includes(e.target.name) && formattedValue.length > 0) {
+        formattedValue = formattedValue.charAt(0).toUpperCase() + formattedValue.slice(1).toLowerCase();
+      }
+      setFormData({ ...formData, [e.target.name]: formattedValue });
     }
   };
 
@@ -71,8 +76,8 @@ function FormDepartment() {
   };
 
   return (
-    <div className="auth-container" style={{ background: 'url("/IMAGES/mrsptu.webp") cover center no-repeat', attachment: 'fixed' }}>
-      <div className="form-box" style={{ maxWidth: '900px', background: 'rgba(255, 255, 255, 0.95)' }}>
+    <div className="auth-container">
+      <div className="form-box" style={{ maxWidth: '900px' }}>
         <h1>Department Registration Form</h1>
         <p style={{ textAlign: 'center', marginBottom: '30px', color: '#666' }}>Create a new department login and details</p>
 
@@ -98,14 +103,9 @@ function FormDepartment() {
               <label>Department Name</label>
               <select name="department" onChange={handleChange} required>
                 <option value="">Select Department</option>
-                <option>Mathematics</option>
-                <option>Computer Science</option>
-                <option>Physics</option>
-                <option>Chemistry</option>
-                <option>Biology</option>
-                <option>Mechanical Engineering</option>
-                <option>Civil Engineering</option>
-                <option>Electrical Engineering</option>
+                {departments.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
               </select>
             </div>
           </div>

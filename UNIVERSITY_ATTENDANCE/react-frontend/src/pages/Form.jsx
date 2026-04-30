@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import emailjs from '@emailjs/browser';
 import api from '../services/api';
+import { departments } from '../utils/departments';
 
 function FormPage() {
   const [formData, setFormData] = useState({
@@ -14,7 +15,8 @@ function FormPage() {
     experience: '',
     department: 'Select Department',
     primarySubject: 'Select subjects',
-    profilePhoto: ''
+    profilePhoto: '',
+    documents: []
   });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -57,8 +59,24 @@ function FormPage() {
           setFormData({ ...formData, profilePhoto: compressedData });
         });
       }
+    } else if (e.target.name === 'documents') {
+      const files = Array.from(e.target.files);
+      const docPromises = files.map(file => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = (event) => resolve({ name: file.name, data: event.target.result });
+        });
+      });
+      Promise.all(docPromises).then(docs => {
+        setFormData(prev => ({ ...prev, documents: docs }));
+      });
     } else {
-      setFormData({ ...formData, [e.target.name]: e.target.value });
+      let formattedValue = e.target.value;
+      if (['fullName', 'primarySubject', 'qualification'].includes(e.target.name) && formattedValue.length > 0) {
+        formattedValue = formattedValue.charAt(0).toUpperCase() + formattedValue.slice(1).toLowerCase();
+      }
+      setFormData({ ...formData, [e.target.name]: formattedValue });
     }
   };
 
@@ -67,7 +85,7 @@ function FormPage() {
     setLoading(true);
 
     const username = (formData.fullName.split(' ')[0].toLowerCase() + formData.phone.slice(-4)).replace(/[^a-z0-9]/g, '');
-    const password = Math.random().toString(36).slice(-8);
+    const password = "Mrsptu@12345";
 
     const teacherData = {
       ...formData,
@@ -103,8 +121,8 @@ function FormPage() {
   };
 
   return (
-    <div className="auth-container" style={{ background: 'url("/IMAGES/mrsptu.webp") cover center no-repeat', attachment: 'fixed' }}>
-      <div className="form-box" style={{ maxWidth: '900px', background: 'rgba(255, 255, 255, 0.95)' }}>
+    <div className="auth-container">
+      <div className="form-box" style={{ maxWidth: '900px' }}>
         <h1>Teacher Details Form</h1>
         <p style={{ textAlign: 'center', marginBottom: '30px', color: '#666' }}>Please fill all required information carefully</p>
 
@@ -126,8 +144,17 @@ function FormPage() {
               <label>Profile Photo</label>
               <input name="profilePhoto" type="file" accept="image/*" onChange={handleChange} />
             </div>
-            <div className="form-group" style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+            <div className="form-group" style={{ width: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {formData.profilePhoto && <img src={formData.profilePhoto} alt="Profile Preview" style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #ddd' }} />}
+            </div>
+            <div className="form-group" style={{ flex: 1.5 }}>
+              <label>Educational Documents (Multiple)</label>
+              <input name="documents" type="file" multiple onChange={handleChange} />
+              {formData.documents.length > 0 && (
+                <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>
+                  {formData.documents.length} files selected
+                </div>
+              )}
             </div>
           </div>
           
@@ -172,25 +199,18 @@ function FormPage() {
               style={{ background: isDepartmentLoggedIn ? '#f5f5f5' : 'white', cursor: isDepartmentLoggedIn ? 'not-allowed' : 'pointer' }}
             >
               <option>Select Department</option>
-              <option>Mathematics</option>
-              <option>Computer Science</option>
-              <option>Physics</option>
-              <option>Chemistry</option>
-              <option>Biology</option>
-              <option>Mechanical Engineering</option>
-              <option>Civil Engineering</option>
-              <option>Electrical Engineering</option>
+              {departments.map(dept => (
+                <option key={dept} value={dept}>{dept}</option>
+              ))}
             </select>
           </div>
           <div className="form-group">
             <label>Primary Subject</label>
-            <select name="primarySubject" onChange={handleChange}>
-              <option>Select subject</option>
-              <option>Mathematics</option>
-              <option>Computer Science</option>
-              <option>Physics</option>
-              <option>Chemistry</option>
-              <option>Biology</option>
+            <select name="primarySubject" value={formData.primarySubject} onChange={handleChange} required>
+              <option value="">Select subject</option>
+              {api.departments.getSubjects(formData.department).map(sub => (
+                <option key={sub} value={sub}>{sub}</option>
+              ))}
             </select>
           </div>
 

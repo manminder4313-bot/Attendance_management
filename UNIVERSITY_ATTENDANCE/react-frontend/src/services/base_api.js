@@ -21,11 +21,10 @@ export const fetchApi = async (endpoint, options = {}) => {
       data = await response.json();
     } else {
       const text = await response.text();
-      console.warn(`⚠️ Received non-JSON response from ${url} (Status: ${response.status}):`, text);
-      if (!response.ok) {
-        throw new Error(`Server Error: ${response.status} ${response.statusText} - ${text.substring(0, 100)}`);
-      }
-      return text; // Return as text if not JSON but OK
+      console.warn(`⚠️ Received non-JSON response from ${url} (Status: ${response.status}):`, text.substring(0, 150));
+      // Throw an error because our backend only ever returns JSON. 
+      // If we get here, Render is likely serving the frontend as a Static Site but not running the Node backend.
+      throw new Error(`Server misconfiguration: Expected JSON API response but received Text/HTML. Please ensure the Node.js backend is running as a Web Service on Render.`);
     }
 
     if (!response.ok) {
