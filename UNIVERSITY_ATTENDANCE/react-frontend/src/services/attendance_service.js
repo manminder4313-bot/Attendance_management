@@ -3,7 +3,10 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export const attendanceService = {
-  getAll: () => fetchApi('/attendance'),
+  getAll: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/attendance${query ? `?${query}` : ''}`);
+  },
   create: (data) => fetchApi('/attendance', { method: 'POST', body: JSON.stringify(data) }),
   delete: (id) => fetchApi(`/attendance/${id}`, { method: 'DELETE' }),
   

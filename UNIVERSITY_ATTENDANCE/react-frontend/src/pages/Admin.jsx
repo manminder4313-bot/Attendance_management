@@ -17,6 +17,7 @@ function Admin() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [isDeleteMode, setIsDeleteMode] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Profile update states
   const [showPwdModal, setShowPwdModal] = useState(false);
@@ -229,6 +230,7 @@ function Admin() {
   }, [navigate, isAdminLoggedIn, isDepartmentLoggedIn, activeTab]);
 
   async function loadSubmissions() {
+    setIsLoading(true);
     try {
       const [teachers, students, depts, admins, recs] = await Promise.all([
         api.teachers.getAll(),
@@ -251,6 +253,8 @@ function Admin() {
       console.log(`📊 Data Loaded: ${teachers.length} Teachers, ${students.length} Students, ${depts.length} Departments`);
     } catch (err) {
       console.error('Error loading data from MongoDB:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -634,11 +638,12 @@ function Admin() {
       </div>
 
       <div style={{ background: 'var(--white)', borderRadius: '12px', boxShadow: '0 5px 20px rgba(0,0,0,0.05)', overflowX: 'auto' }}>
-        {(activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? departmentSubmissions : adminSubmissions).length === 0 ? (
+        {((activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? departmentSubmissions : adminSubmissions).length === 0 && !isLoading) ? (
           <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-light)', fontStyle: 'italic' }}>
             No {activeTab} submissions found.
           </div>
-          ) : activeTab === 'students' ? (
+          ) : (
+            activeTab === 'students' ? (
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr>
@@ -656,54 +661,72 @@ function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {filteredStudents.map((s) => (
-                  <tr key={s.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(s.id) ? '#f0f8ff' : 'transparent' }}>
-                    {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => handleSelect(s.id)} /></td>}
+                {isLoading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <tr key={`skel-student-${i}`} style={{ borderBottom: '1px solid #eee' }}>
+                      {isDeleteMode && <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '20px' }}></div></td>}
+                      <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '150px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '200px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '60px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
+                    </tr>
+                  ))
+                ) : (
+                  filteredStudents.map((s) => (
+                    <tr key={s.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(s.id) ? '#f0f8ff' : 'transparent' }}>
+                      {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => handleSelect(s.id)} /></td>}
 
-                    <td style={tdStyle}>
-                      <div style={{ position: 'relative', display: 'inline-block' }}>
-                        {s.profilePhoto ? (
-                          <img src={s.profilePhoto} alt="Profile" className="profile-thumb" />
+                      <td style={tdStyle}>
+                        <div style={{ position: 'relative', display: 'inline-block' }}>
+                          {s.profilePhoto ? (
+                            <img src={s.profilePhoto} alt="Profile" className="profile-thumb" />
+                          ) : (
+                            <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{s.fullName?.charAt(0).toUpperCase()}</div>
+                          )}
+                          <div
+                            onClick={() => triggerMemberPhotoEdit(s.id, 'student')}
+                            style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
+                          >
+                            📷
+                          </div>
+                        </div>
+                      </td>
+                      <td style={tdStyle}>{s.createdAt || s.registrationDate ? new Date(s.createdAt || s.registrationDate).toLocaleString() : (s.submissionDate || 'N/A')}</td>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{s.fullName}</td>
+                      <td style={tdStyle}>{s.email}</td>
+                      <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{s.course}</span></td>
+                      <td style={tdStyle}>{s.batchYear}</td>
+                      <td style={tdStyle}>{s.enrollmentNumber}</td>
+                      <td style={tdStyle}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ width: '60px', height: '6px', background: '#eee', borderRadius: '3px', overflow: 'hidden' }}>
+                            <div style={{ width: `${api.attendance.getStats(attendanceRecords, s.id).percentage}%`, height: '100%', background: api.attendance.getStats(attendanceRecords, s.id).percentage >= 75 ? '#27ae60' : '#e74c3c' }}></div>
+                          </div>
+                          <span style={{ fontWeight: 'bold', color: api.attendance.getStats(attendanceRecords, s.id).percentage >= 60 ? '#27ae60' : '#e74c3c' }}>
+                            {api.attendance.getStats(attendanceRecords, s.id).percentage}%
+                          </span>
+                        </div>
+                      </td>
+
+                      <td style={tdStyle}>
+                        {s.enrolledFace ? (
+                          <img src={s.enrolledFace} alt="Enrolled" className="profile-thumb" style={{ border: '2px solid #27ae60' }} />
                         ) : (
-                          <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{s.fullName?.charAt(0).toUpperCase()}</div>
+                          <div className="profile-thumb" style={{ background: '#fff3f3', border: '1px dashed #e74c3c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#e74c3c' }}>Missing</div>
                         )}
-                        <div
-                          onClick={() => triggerMemberPhotoEdit(s.id, 'student')}
-                          style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
-                        >
-                          📷
-                        </div>
-                      </div>
-                    </td>
-                    <td style={tdStyle}>{s.createdAt || s.registrationDate ? new Date(s.createdAt || s.registrationDate).toLocaleString() : (s.submissionDate || 'N/A')}</td>
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>{s.fullName}</td>
-                    <td style={tdStyle}>{s.email}</td>
-                    <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{s.course}</span></td>
-                    <td style={tdStyle}>{s.batchYear}</td>
-                    <td style={tdStyle}>{s.enrollmentNumber}</td>
-                    <td style={tdStyle}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ width: '60px', height: '6px', background: '#eee', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{ width: `${api.attendance.getStats(attendanceRecords, s.id).percentage}%`, height: '100%', background: api.attendance.getStats(attendanceRecords, s.id).percentage >= 75 ? '#27ae60' : '#e74c3c' }}></div>
-                        </div>
-                        <span style={{ fontWeight: 'bold', color: api.attendance.getStats(attendanceRecords, s.id).percentage >= 60 ? '#27ae60' : '#e74c3c' }}>
-                          {api.attendance.getStats(attendanceRecords, s.id).percentage}%
-                        </span>
-                      </div>
-                    </td>
-
-                    <td style={tdStyle}>
-                      {s.enrolledFace ? (
-                        <img src={s.enrolledFace} alt="Enrolled" className="profile-thumb" style={{ border: '2px solid #27ae60' }} />
-                      ) : (
-                        <div className="profile-thumb" style={{ background: '#fff3f3', border: '1px dashed #e74c3c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#e74c3c' }}>Missing</div>
-                      )}
-                    </td>
-                    <td style={tdStyle}>
-                      <button onClick={() => viewStudentDetails(s)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td style={tdStyle}>
+                        <button onClick={() => viewStudentDetails(s)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
         ) : (
@@ -725,36 +748,53 @@ function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {filteredTeachers.map((t) => (
-                  <tr key={t.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(t.id) ? '#f0f8ff' : 'transparent' }}>
-                    {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(t.id)} onChange={() => handleSelect(t.id)} /></td>}
-                    <td style={tdStyle}>
-                      <div style={{ position: 'relative', display: 'inline-block' }}>
-                        {t.profilePhoto ? (
-                          <img src={t.profilePhoto} alt="Profile" className="profile-thumb" />
-                        ) : (
-                          <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{t.fullName?.charAt(0).toUpperCase()}</div>
-                        )}
-                        <div
-                          onClick={() => triggerMemberPhotoEdit(t.id, 'teacher')}
-                          style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
-                        >
-                          📷
+                {isLoading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <tr key={`skel-teacher-${i}`} style={{ borderBottom: '1px solid #eee' }}>
+                      {isDeleteMode && <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '20px' }}></div></td>}
+                      <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '150px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '200px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '60px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
+                    </tr>
+                  ))
+                ) : (
+                  filteredTeachers.map((t) => (
+                    <tr key={t.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(t.id) ? '#f0f8ff' : 'transparent' }}>
+                      {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(t.id)} onChange={() => handleSelect(t.id)} /></td>}
+                      <td style={tdStyle}>
+                        <div style={{ position: 'relative', display: 'inline-block' }}>
+                          {t.profilePhoto ? (
+                            <img src={t.profilePhoto} alt="Profile" className="profile-thumb" />
+                          ) : (
+                            <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{t.fullName?.charAt(0).toUpperCase()}</div>
+                          )}
+                          <div
+                            onClick={() => triggerMemberPhotoEdit(t.id, 'teacher')}
+                            style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
+                          >
+                            📷
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td style={tdStyle}>{t.createdAt ? new Date(t.createdAt).toLocaleString() : (t.submissionDate || 'N/A')}</td>
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>{t.fullName}</td>
-                    <td style={tdStyle}>{t.email}</td>
-                    <td style={tdStyle}>{t.phone}</td>
-                    <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{t.primarySubject}</span></td>
-                    <td style={tdStyle}>{t.experience || '0'}</td>
-                    <td style={tdStyle}>{t.department || 'N/A'}</td>
-                    <td style={tdStyle}>
-                      <button onClick={() => viewDetails(t)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td style={tdStyle}>{t.createdAt ? new Date(t.createdAt).toLocaleString() : (t.submissionDate || 'N/A')}</td>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{t.fullName}</td>
+                      <td style={tdStyle}>{t.email}</td>
+                      <td style={tdStyle}>{t.phone}</td>
+                      <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{t.primarySubject}</span></td>
+                      <td style={tdStyle}>{t.experience || '0'}</td>
+                      <td style={tdStyle}>{t.department || 'N/A'}</td>
+                      <td style={tdStyle}>
+                        <button onClick={() => viewDetails(t)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           ) : activeTab === 'departments' ? (
@@ -772,34 +812,49 @@ function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {departmentSubmissions.map((d) => (
-                  <tr key={d.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(d.id) ? '#f0f8ff' : 'transparent' }}>
-                    {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(d.id)} onChange={() => handleSelect(d.id)} /></td>}
-                    <td style={tdStyle}>{d.createdAt ? new Date(d.createdAt).toLocaleString() : (d.submissionDate || 'N/A')}</td>
-                    <td style={tdStyle}>
-                       <div style={{ position: 'relative', display: 'inline-block' }}>
-                         {d.profilePhoto ? (
-                           <img src={d.profilePhoto} alt="Profile" className="profile-thumb" />
-                         ) : (
-                           <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{d.headName?.charAt(0).toUpperCase()}</div>
-                         )}
-                         <div
-                           onClick={() => triggerMemberPhotoEdit(d.id, 'department')}
-                           style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
-                         >
-                           📷
+                {isLoading ? (
+                  Array(5).fill(0).map((_, i) => (
+                    <tr key={`skel-dept-${i}`} style={{ borderBottom: '1px solid #eee' }}>
+                      {isDeleteMode && <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '20px' }}></div></td>}
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '150px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '180px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
+                    </tr>
+                  ))
+                ) : (
+                  departmentSubmissions.map((d) => (
+                    <tr key={d.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(d.id) ? '#f0f8ff' : 'transparent' }}>
+                      {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(d.id)} onChange={() => handleSelect(d.id)} /></td>}
+                      <td style={tdStyle}>{d.createdAt ? new Date(d.createdAt).toLocaleString() : (d.submissionDate || 'N/A')}</td>
+                      <td style={tdStyle}>
+                         <div style={{ position: 'relative', display: 'inline-block' }}>
+                           {d.profilePhoto ? (
+                             <img src={d.profilePhoto} alt="Profile" className="profile-thumb" />
+                           ) : (
+                             <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{d.headName?.charAt(0).toUpperCase()}</div>
+                           )}
+                           <div
+                             onClick={() => triggerMemberPhotoEdit(d.id, 'department')}
+                             style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
+                           >
+                             📷
+                           </div>
                          </div>
-                       </div>
-                     </td>
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>{d.headName}</td>
-                    <td style={tdStyle}>{d.email}</td>
-                    <td style={tdStyle}>{d.phone}</td>
-                    <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{d.department}</span></td>
-                    <td style={tdStyle}>
-                      <button onClick={() => viewDeptDetails(d)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
-                    </td>
-                  </tr>
-                ))}
+                       </td>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{d.headName}</td>
+                      <td style={tdStyle}>{d.email}</td>
+                      <td style={tdStyle}>{d.phone}</td>
+                      <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{d.department}</span></td>
+                      <td style={tdStyle}>
+                        <button onClick={() => viewDeptDetails(d)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           ) : activeTab === 'admins' ? (
@@ -1056,7 +1111,7 @@ function Admin() {
               </tbody>
             </table>
           ) : null
-        )}
+        ))}
       </div>
 
       {showPdfModal && (

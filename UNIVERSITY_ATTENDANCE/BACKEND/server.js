@@ -225,7 +225,18 @@ app.put('/api/departments/:id', async (req, res) => {
 // ATTENDANCE
 app.get('/api/attendance', async (req, res) => {
   try {
-    const attendance = await Attendance.find();
+    const { studentId, teacherId, subject, semester, course } = req.query;
+    console.log(`🔍 Attendance Query:`, { studentId, teacherId, subject, semester, course });
+    let query = {};
+    
+    if (studentId) query[`attendance.${studentId}`] = { $exists: true };
+    if (teacherId) query.teacherId = teacherId;
+    if (subject && subject !== 'All') query.subject = subject;
+    if (semester && semester !== 'All') query.semester = semester;
+    if (course && course !== 'All') query.course = course;
+
+    console.log(`📦 DB Query:`, JSON.stringify(query));
+    const attendance = await Attendance.find(query).sort({ date: -1 });
     res.json(attendance);
   } catch (err) {
     res.status(500).json({ message: err.message });

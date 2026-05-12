@@ -16,26 +16,34 @@ function StudentDashboard() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [pwdUpdateMsg, setPwdUpdateMsg] = useState({ text: '', type: '' });
 
-  const [activeView, setActiveView] = useState('attendance'); // 'attendance' or 'details'
+  const [activeView, setActiveView] = useState('details'); // 'details' or 'attendance' as default
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedSubject, setSelectedSubject] = useState('All');
+  const [semesterFilter, setSemesterFilter] = useState('');
 
   useEffect(() => {
     const savedStudent = sessionStorage.getItem('loggedInStudent');
     if (savedStudent) {
       const parsed = JSON.parse(savedStudent);
       setStudentInfo(parsed);
-      fetchData(parsed);
+      setSemesterFilter(parsed.semester); // Default to current semester
+      fetchData(parsed, parsed.semester);
     } else {
       navigate('/student-services');
     }
   }, []);
 
-  const fetchData = async (student) => {
+  const fetchData = async (student, sem, sub) => {
+    if (!student) return;
+    setLoading(true);
     try {
-      const records = await api.attendance.getAll();
       const id = student._id || student.id;
-      const myRecords = records.filter(r => r.attendance?.[id]);
+      // Optimize: Fetch records for specific student, semester, AND subject
+      const params = { studentId: id };
+      if (sem && sem !== 'All') params.semester = sem;
+      if (sub && sub !== 'All') params.subject = sub;
+      
+      const myRecords = await api.attendance.getAll(params);
       setAttendanceRecords(myRecords);
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -73,21 +81,18 @@ function StudentDashboard() {
     }
   };
 
-  if (loading || !studentInfo) {
-    return (
-      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
-        <div style={{ textAlign: 'center' }}>
-          <h2 style={{ color: '#8a2c20' }}>Loading Modern Dashboard...</h2>
-          <div className="loader"></div>
-        </div>
-      </div>
-    );
-  }
-
-  const id = studentInfo._id || studentInfo.id;
+  const id = studentInfo?._id || studentInfo?.id;
   
-  // Get predefined subjects based on course and semester
-  const predefinedSubjects = (subjectMapping[studentInfo.course] && subjectMapping[studentInfo.course][studentInfo.semester]) || [];
+  const getSemesterIndex = (semStr) => {
+    if (!semStr) return "";
+    const match = semStr.match(/\d+/);
+    return match ? match[0] : semStr;
+  };
+
+  const semIndex = getSemesterIndex(semesterFilter || studentInfo?.semester);
+  
+  // Get predefined subjects based on course and semester index (e.g. "4th Semester" -> "4")
+  const predefinedSubjects = (studentInfo && subjectMapping[studentInfo.course] && subjectMapping[studentInfo.course][semIndex]) || [];
   
   // Combine predefined subjects with subjects from existing attendance records
   const subjects = ['All', ...new Set([...predefinedSubjects, ...attendanceRecords.map(r => r.subject || 'General')])];
@@ -97,7 +102,7 @@ function StudentDashboard() {
     : attendanceRecords.filter(r => (r.subject || 'General') === selectedSubject);
 
   const presentCount = filteredRecords.filter(r => r.attendance?.[id] === 'Present').length;
-  const absentCount = filteredRecords.filter(r => r.attendance?.[id] === 'Absent').length;
+  const absentCount = filteredRecords.filter(r => r.attendance?.[id] !== 'Present').length;
 
   const currentYear = calendarDate.getFullYear();
   const currentMonth = calendarDate.getMonth();
@@ -121,11 +126,11 @@ function StudentDashboard() {
           <span>MRSPTU</span>
         </div>
         <ul className="sidebar-menu">
-          <li className={`sidebar-item ${activeView === 'attendance' ? 'active' : ''}`} onClick={() => setActiveView('attendance')}>
-            <i className="fas fa-calendar-check"></i> Attendance
-          </li>
           <li className={`sidebar-item ${activeView === 'details' ? 'active' : ''}`} onClick={() => setActiveView('details')}>
             <i className="fas fa-user-circle"></i> My Details
+          </li>
+          <li className={`sidebar-item ${activeView === 'attendance' ? 'active' : ''}`} onClick={() => setActiveView('attendance')}>
+            <i className="fas fa-calendar-check"></i> Attendance
           </li>
           <li className="sidebar-item"><i className="fas fa-book"></i> Academic</li>
           <li className="sidebar-item"><i className="fas fa-file-alt"></i> Examinations</li>
@@ -144,9 +149,9 @@ function StudentDashboard() {
           </div>
           <div className="user-profile">
             <div className="profile-info" onClick={() => setActiveView('details')} style={{ cursor: 'pointer' }}>
-              <img src={studentInfo.profilePhoto || "https://ui-avatars.com/api/?name=User"} alt="User" />
+              <img src={studentInfo?.profilePhoto || "https://ui-avatars.com/api/?name=User"} alt="User" />
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span className="user-name">{studentInfo.fullName}</span>
+                <span className="user-name">{studentInfo?.fullName}</span>
                 <span className="user-role">Student Portal</span>
               </div>
             </div>
@@ -162,19 +167,38 @@ function StudentDashboard() {
                   <div className="filters-grid">
                     <div className="filter-group">
                       <label>Course</label>
-                      <select disabled><option>{studentInfo.course}</option></select>
+                      <select disabled><option>{studentInfo?.course || 'Loading...'}</option></select>
                     </div>
                     <div className="filter-group">
                       <label>Semester</label>
-                      <select disabled><option>{studentInfo.semester}</option></select>
+                      <select 
+                        value={semesterFilter} 
+                        onChange={(e) => {
+                          setSemesterFilter(e.target.value);
+                          fetchData(studentInfo, e.target.value);
+                        }}
+                      >
+                        <option value="All">All Semesters</option>
+                        {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                          <option key={n} value={`${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester`}>
+                            {n}{n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div className="filter-group">
                       <label>Subject</label>
-                      <select value={selectedSubject} onChange={(e) => setSelectedSubject(e.target.value)}>
+                      <select 
+                        value={selectedSubject} 
+                        onChange={(e) => {
+                          setSelectedSubject(e.target.value);
+                          fetchData(studentInfo, semesterFilter, e.target.value);
+                        }}
+                      >
                         {subjects.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
-                    <button className="search-btn" onClick={() => fetchData(studentInfo)}>
+                    <button className="search-btn" onClick={() => fetchData(studentInfo, semesterFilter, selectedSubject)}>
                       <i className="fas fa-sync-alt"></i> Refresh
                     </button>
                   </div>
@@ -185,26 +209,42 @@ function StudentDashboard() {
                     <thead>
                       <tr>
                         <th>Date</th>
+                        <th>Semester</th>
                         <th>Subject</th>
                         <th>Teacher</th>
                         <th>Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredRecords.sort((a,b) => new Date(b.date) - new Date(a.date)).map((r, idx) => (
-                        <tr key={idx}>
-                          <td>{r.date}</td>
-                          <td>{r.subject || 'General'}</td>
-                          <td>{r.teacherName || 'Admin'}</td>
-                          <td>
-                            <span className={`status-badge ${r.attendance?.[id] === 'Present' ? 'present' : 'absent'}`}>
-                              {r.attendance?.[id]}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                      {attendanceRecords.length === 0 && (
-                        <tr><td colSpan="4" style={{ textAlign: 'center', padding: '40px' }}>No records found</td></tr>
+                      {loading ? (
+                        Array(5).fill(0).map((_, i) => (
+                          <tr key={`skel-row-${i}`}>
+                            <td><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
+                            <td><div className="skeleton skeleton-text" style={{ width: '60px' }}></div></td>
+                            <td><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                            <td><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                            <td><div className="skeleton skeleton-text" style={{ width: '60px' }}></div></td>
+                          </tr>
+                        ))
+                      ) : (
+                        <>
+                          {filteredRecords.sort((a,b) => new Date(b.date) - new Date(a.date)).map((r, idx) => (
+                            <tr key={idx}>
+                              <td>{r.date}</td>
+                              <td style={{ fontSize: '12px', fontWeight: 'bold', color: '#8a2c20' }}>{r.semester}</td>
+                              <td>{r.subject || 'General'}</td>
+                              <td>{r.teacherName || 'Admin'}</td>
+                              <td>
+                                <span className={`status-badge ${r.attendance?.[id] === 'Present' ? 'present' : 'absent'}`}>
+                                  {r.attendance?.[id] === 'Present' ? 'Present' : 'Absent'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                          {filteredRecords.length === 0 && (
+                            <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>No records found for this selection</td></tr>
+                          )}
+                        </>
                       )}
                     </tbody>
                   </table>
@@ -231,19 +271,20 @@ function StudentDashboard() {
                     {[...Array(daysInMonth)].map((_, i) => {
                       const day = i + 1;
                       const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                      const record = filteredRecords.find(r => r.date === dateStr);
-                      const status = record?.attendance?.[id];
+                      const dayRecords = filteredRecords.filter(r => r.date === dateStr);
+                      const dayAbsents = dayRecords.filter(r => r.attendance?.[id] !== 'Present').length;
+                      const dayPresents = dayRecords.filter(r => r.attendance?.[id] === 'Present').length;
                       
                       const currentDayOfWeek = new Date(currentYear, currentMonth, day).getDay();
                       const isWeekend = currentDayOfWeek === 0 || currentDayOfWeek === 6;
                       
                       let className = 'calendar-day';
-                      if (status === 'Present') className += ' active';
-                      else if (status === 'Absent') className += ' danger';
+                      if (dayAbsents > 0) className += ' danger'; 
+                      else if (dayPresents > 0) className += ' active';
                       else if (isWeekend) className += ' day-off';
 
                       return (
-                        <div key={day} className={className} title={isWeekend ? 'Day Off' : ''}>
+                        <div key={day} className={className} title={dayAbsents > 0 ? 'Absent' : dayPresents > 0 ? 'Present' : isWeekend ? 'Day Off' : ''}>
                           {day}
                         </div>
                       );
@@ -254,15 +295,24 @@ function StudentDashboard() {
                 <div className="stats-container">
                   <div className="stat-card stat-yellow">
                     <div className="stat-icon">🎓</div>
-                    <div className="stat-info"><h4>{filteredRecords.length}</h4><p>Total Classes</p></div>
+                    <div className="stat-info">
+                      {loading ? <div className="skeleton skeleton-text" style={{ width: '40px', height: '24px' }}></div> : <h4>{filteredRecords.length}</h4>}
+                      <p>Total Classes</p>
+                    </div>
                   </div>
                   <div className="stat-card stat-green">
                     <div className="stat-icon">✅</div>
-                    <div className="stat-info"><h4>{presentCount}</h4><p>Present</p></div>
+                    <div className="stat-info">
+                      {loading ? <div className="skeleton skeleton-text" style={{ width: '40px', height: '24px' }}></div> : <h4>{presentCount}</h4>}
+                      <p>Present</p>
+                    </div>
                   </div>
                   <div className="stat-card stat-red">
                     <div className="stat-icon">☹️</div>
-                    <div className="stat-info"><h4>{absentCount}</h4><p>Absent</p></div>
+                    <div className="stat-info">
+                      {loading ? <div className="skeleton skeleton-text" style={{ width: '40px', height: '24px' }}></div> : <h4>{absentCount}</h4>}
+                      <p>Absent</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -272,17 +322,13 @@ function StudentDashboard() {
               <div className="card">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '30px', marginBottom: '40px', borderBottom: '1px solid #eee', paddingBottom: '30px' }}>
                   <img 
-                    src={studentInfo.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(studentInfo.fullName)}&background=8a2c20&color=fff&size=128`} 
+                    src={studentInfo?.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(studentInfo?.fullName || 'User')}&background=8a2c20&color=fff&size=128`} 
                     alt="Profile" 
-                    style={{ width: '120px', height: '120px', borderRadius: '50%', objectFit: 'cover', border: '4px solid #fff', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}
+                    style={{ width: '120px', height: '120px', borderRadius: '15px', border: '3px solid #8a2c20', objectFit: 'cover' }} 
                   />
                   <div>
-                    <h1 style={{ fontSize: '32px', color: '#333', marginBottom: '5px' }}>{studentInfo.fullName}</h1>
-                    <p style={{ color: '#777', fontSize: '16px' }}>Student ID: {studentInfo.enrollmentNumber}</p>
-                    <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
-                      <span className="status-badge present">{studentInfo.course}</span>
-                      <span className="status-badge" style={{ backgroundColor: '#eef2f7', color: '#555' }}>Semester {studentInfo.semester}</span>
-                    </div>
+                    <h2 style={{ margin: 0, color: '#8a2c20', fontSize: '28px' }}>{studentInfo?.fullName}</h2>
+                    <p style={{ margin: '5px 0 0', color: '#666', fontSize: '16px' }}>{studentInfo?.course} | Semester {studentInfo?.semester}</p>
                   </div>
                 </div>
 
@@ -294,19 +340,19 @@ function StudentDashboard() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                       <div className="info-item">
                         <label style={{ fontSize: '12px', color: '#999', display: 'block' }}>Email Address</label>
-                        <span style={{ fontWeight: '600' }}>{studentInfo.email}</span>
+                        <span style={{ fontWeight: '600' }}>{studentInfo?.email}</span>
                       </div>
                       <div className="info-item">
                         <label style={{ fontSize: '12px', color: '#999', display: 'block' }}>Phone Number</label>
-                        <span style={{ fontWeight: '600' }}>{studentInfo.phone}</span>
+                        <span style={{ fontWeight: '600' }}>{studentInfo?.phone}</span>
                       </div>
                       <div className="info-item">
                         <label style={{ fontSize: '12px', color: '#999', display: 'block' }}>Gender</label>
-                        <span style={{ fontWeight: '600' }}>{studentInfo.gender}</span>
+                        <span style={{ fontWeight: '600' }}>{studentInfo?.gender}</span>
                       </div>
                       <div className="info-item">
                         <label style={{ fontSize: '12px', color: '#999', display: 'block' }}>Date of Birth</label>
-                        <span style={{ fontWeight: '600' }}>{studentInfo.dob}</span>
+                        <span style={{ fontWeight: '600' }}>{studentInfo?.dob}</span>
                       </div>
                     </div>
                   </div>
@@ -322,15 +368,15 @@ function StudentDashboard() {
                       </div>
                       <div className="info-item">
                         <label style={{ fontSize: '12px', color: '#999', display: 'block' }}>Enrollment Number</label>
-                        <span style={{ fontWeight: '600' }}>{studentInfo.enrollmentNumber}</span>
+                        <span style={{ fontWeight: '600' }}>{studentInfo?.enrollmentNumber}</span>
                       </div>
                       <div className="info-item">
                         <label style={{ fontSize: '12px', color: '#999', display: 'block' }}>Username</label>
-                        <span style={{ fontWeight: '600' }}>{studentInfo.username}</span>
+                        <span style={{ fontWeight: '600' }}>{studentInfo?.username}</span>
                       </div>
                       <div className="info-item">
-                        <label style={{ fontSize: '12px', color: '#999', display: 'block' }}>Batch</label>
-                        <span style={{ fontWeight: '600' }}>2022-2024</span>
+                        <label style={{ fontSize: '12px', color: '#999', display: 'block' }}>Batch Year</label>
+                        <span style={{ fontWeight: '600' }}>{studentInfo?.batchYear}</span>
                       </div>
                     </div>
                   </div>

@@ -17,6 +17,7 @@ function TeacherProfile() {
   const [saveStatus, setSaveStatus] = useState({ text: '', type: '' });
   const [selectedHistory, setSelectedHistory] = useState(null); // Updated state for modal viewing
   const [historySemesterFilter, setHistorySemesterFilter] = useState(''); // New history filter state
+  const [selectedCourse, setSelectedCourse] = useState('');
   const [selectedSession, setSelectedSession] = useState('Lecture 1'); // Session selection state
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [targetRollNo, setTargetRollNo] = useState(''); // State for custom enrollment link
@@ -48,6 +49,17 @@ function TeacherProfile() {
   const [detectionLog, setDetectionLog] = useState([]);
   const [lastDetectedStudent, setLastDetectedStudent] = useState('');
   const [lastDetectedPhoto, setLastDetectedPhoto] = useState(null);
+  const [showScanResults, setShowScanResults] = useState(false);
+  const [scanResultsData, setScanResultsData] = useState({ present: [], absent: [] });
+  const [detectedIds, setDetectedIds] = useState([]);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [isInitializingAI, setIsInitializingAI] = useState(false);
+  const [faceMatchers, setFaceMatchers] = useState(null);
+  const [groupPhoto, setGroupPhoto] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
 
   const navigate = useNavigate();
 
@@ -60,21 +72,82 @@ function TeacherProfile() {
       setTeacher(teacherData);
       loadSubmissions(teacherData);
       loadHistory(teacherData);
+      initFaceAI();
     }
   }, [navigate, activeTab]);
 
-  const loadHistory = async (teacherData) => {
+  const initFaceAI = async () => {
+    if (modelsLoaded || isInitializingAI) return;
+    setIsInitializingAI(true);
     try {
-      const allRecords = await api.attendance.getAll();
-      const teacherHistory = allRecords.filter(r => r.teacherId === (teacherData._id || teacherData.id))
-                                       .map(r => ({ 
+      const MODEL_URL = 'https://cdn.jsdelivr.net/gh/vladmandic/face-api/model/';
+      await Promise.all([
+        window.faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+        window.faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        window.faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+        window.faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+      ]);
+      setModelsLoaded(true);
+      console.log("✅ Face-API Models Loaded Successfully");
+    } catch (err) {
+      console.error("❌ Failed to load Face-API models:", err);
+    } finally {
+      setIsInitializingAI(false);
+    }
+  };
+
+  const prepareFaceMatchers = async (studentsList) => {
+    if (!window.faceapi || !modelsLoaded) return;
+    
+    const labeledDescriptors = [];
+    
+    for (const s of studentsList) {
+      if (s.enrolledFace) {
+        try {
+          const img = await window.faceapi.fetchImage(s.enrolledFace);
+          // Use High Precision SSD Detector for enrollment processing
+          const detection = await window.faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+          
+          if (detection) {
+            labeledDescriptors.push(new window.faceapi.LabeledFaceDescriptors(
+              s.id || s._id,
+              [detection.descriptor]
+            ));
+          }
+        } catch (err) {
+          console.warn(`Could not process enrollment for ${s.fullName}:`, err);
+        }
+      }
+    }
+
+    if (labeledDescriptors.length > 0) {
+      // Use a more forgiving threshold (0.6) for better matching in group photos
+      setFaceMatchers(new window.faceapi.FaceMatcher(labeledDescriptors, 0.6));
+    }
+  };
+
+  // Ensure FaceMatchers are prepared when models load or students list is updated
+  useEffect(() => {
+    if (modelsLoaded && students.length > 0) {
+      prepareFaceMatchers(students);
+    }
+  }, [modelsLoaded, students]);
+
+  const loadHistory = async (teacherData) => {
+    setIsLoadingHistory(true);
+    try {
+      const id = teacherData._id || teacherData.id;
+      // Optimize: Fetch ONLY this teacher's records
+      const teacherHistory = await api.attendance.getAll({ teacherId: id });
+      setAttendanceRecords(teacherHistory.sort((a,b) => new Date(b.date) - new Date(a.date)).map(r => ({ 
                                          ...r, 
                                          id: r._id || r.id,
                                          dateDisplay: r.date ? new Date(r.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'
-                                       }));
-      setAttendanceRecords(teacherHistory);
+                                       })));
     } catch (err) {
       console.error('Error loading history:', err);
+    } finally {
+      setIsLoadingHistory(false);
     }
   };
 
@@ -90,28 +163,33 @@ function TeacherProfile() {
   }, [isCameraOpen]);
 
   const loadSubmissions = async (teacherData) => {
+    setIsLoadingStudents(true);
     try {
       const allStudents = await api.students.getAll();
       const filteredStudents = allStudents.filter(s => {
-        const dept = teacherData.department;
+        const dept = teacherData.department?.trim().toLowerCase();
+        const studentDept = s.department?.trim().toLowerCase();
         
         // 1. Primary Check: Direct Department Match
-        if (s.department && dept && s.department === dept) {
+        if (studentDept && dept && studentDept.includes(dept)) {
           return true;
         }
 
         // 2. Secondary Check: Course Mapping
         const course = s.course;
-        const deptCourses = api.departments.getCourses(dept);
+        const deptCourses = api.departments.getCourses(teacherData.department);
         if (deptCourses.length > 0 && deptCourses.includes(course)) {
             return true;
         }
         
         // 3. Fallback: Fuzzy Name Match
-        return course?.toLowerCase().includes(dept?.toLowerCase()) || 
-               dept?.toLowerCase().includes(course?.toLowerCase());
+        return course?.toLowerCase().includes(dept) || 
+               dept?.includes(course?.toLowerCase());
       });
       setStudents(filteredStudents.map(s => ({ ...s, id: s._id || s.id })));
+      
+      const studentsWithId = filteredStudents.map(s => ({ ...s, id: s._id || s.id }));
+      prepareFaceMatchers(studentsWithId);
 
       const initialMarks = {};
       filteredStudents.forEach(s => {
@@ -120,10 +198,32 @@ function TeacherProfile() {
       setAttendanceMarks(initialMarks);
     } catch (err) {
       console.error('Error loading students:', err);
+    } finally {
+      setIsLoadingStudents(false);
     }
   };
 
   const startCamera = async () => {
+    // Check for required filters first
+    if (!semesterFilter || semesterFilter === 'All') {
+      alert("⚠️ Plz select a specific Semester before starting attendance.");
+      return;
+    }
+    if (!selectedCourse || selectedCourse === 'All') {
+      alert("⚠️ Plz select a specific Course before starting attendance.");
+      return;
+    }
+    if (!selectedSubject) {
+      alert("⚠️ Plz select an Assigned Subject before starting attendance.");
+      return;
+    }
+
+    // Check for duplicates before starting camera
+    if (getIsDuplicate()) {
+      alert(`⚠️ ATTENTION: This lecture (${selectedSession}) for ${selectedSubject} has already been marked today.\n\nPlz set other lecture or check the Attendance History tab.`);
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
@@ -133,7 +233,16 @@ function TeacherProfile() {
         } 
       });
       streamRef.current = stream;
+      
+      // If video element is already in DOM (e.g. re-scanning), attach immediately
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(e => console.warn("Auto-play failed:", e));
+      }
+
       setIsCameraOpen(true);
+      setIsScanning(true);
+      startLiveScan();
     } catch (err) {
       console.error("Camera error:", err);
       alert("Could not access camera. Please check permissions or ensure you are on HTTPS.");
@@ -142,10 +251,18 @@ function TeacherProfile() {
 
   // Attach stream when video element is rendered
   useEffect(() => {
-    if (isCameraOpen && streamRef.current && videoRef.current) {
-      videoRef.current.srcObject = streamRef.current;
+    let timeout;
+    if (isCameraOpen && streamRef.current) {
+      // Ensure video element is attached to the stream once it's in the DOM
+      timeout = setTimeout(() => {
+        if (videoRef.current && videoRef.current.srcObject !== streamRef.current) {
+          videoRef.current.srcObject = streamRef.current;
+          videoRef.current.play().catch(e => console.warn("Video play error:", e));
+        }
+      }, 150);
     }
-  }, [isCameraOpen]);
+    return () => clearTimeout(timeout);
+  }, [isCameraOpen, groupPhoto, isScanning]);
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -159,75 +276,182 @@ function TeacherProfile() {
     setIsCameraOpen(false);
     setIsScanning(false);
     setScanProgress(0);
+    setShowScanResults(false);
+    setScanResultsData({ present: [], absent: [] });
+    setGroupPhoto(null);
+    setIsAnalyzing(false);
   };
 
-  const performScan = () => {
-    if (!semesterFilter) {
-      alert("Please select a semester first!");
-      return;
+  const performGroupAnalysis = async () => {
+    if (!videoRef.current || !faceMatchers) return;
+
+    setIsAnalyzing(true);
+    setScanProgress(10);
+    setDetectionLog(['📷 Capturing Group High-Resolution Snapshot...']);
+
+    // 1. CAPTURE THE PHOTO
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoRef.current, 0, 0);
+    const photoData = canvas.toDataURL('image/jpeg', 0.9);
+    setGroupPhoto(photoData);
+    setCapturedImage(photoData);
+    
+    // Stop video to focus on analysis
+    if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
     }
-    
-    setIsScanning(true);
-    setDetectionLog(['Initializing Core...']);
-    setLastDetectedStudent('');
-    
-    let progress = 0;
-    const studentsPool = [...filteredBySemester];
-    const detectedIds = [];
-    
-    scanIntervalRef.current = setInterval(() => {
-      progress += 2;
-      setScanProgress(progress);
-      
-      // Periodically "Detect" a student
-      if (progress % 10 === 0 && studentsPool.length > 0) {
-        const randomIndex = Math.floor(Math.random() * studentsPool.length);
-        const student = studentsPool.splice(randomIndex, 1)[0];
-        
-        // 80% chance of 'Detection' for each student in frame
-        if (Math.random() > 0.2) {
-          detectedIds.push(student.id);
-          setLastDetectedStudent(student.fullName);
-          setLastDetectedPhoto(student.enrolledFace || student.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(student.fullName || 'Student')}&background=8a2c20&color=fff`);
-          setDetectionLog(prev => [`✓ Detected: ${student.fullName}`, ...prev.slice(0, 5)]);
+
+    setScanProgress(30);
+    setDetectionLog(prev => ['🧠 Neural Engine: Analyzing Class Geometry...', ...prev]);
+
+    try {
+      // 2. DETECT ALL FACES IN THE CAPTURED PHOTO
+      const img = await window.faceapi.fetchImage(photoData);
+      const detections = await window.faceapi.detectAllFaces(img)
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+
+      setScanProgress(70);
+      setDetectionLog(prev => [`🔍 Identified ${detections.length} faces in group photo`, ...prev]);
+
+      if (detections.length === 0) {
+        setDetectionLog(prev => ['⚠️ No faces detected. Try adjusting the camera.', ...prev]);
+      }
+
+      const foundIds = [];
+      detections.forEach(detection => {
+        const bestMatch = faceMatchers.findBestMatch(detection.descriptor);
+        if (bestMatch.label !== 'unknown') {
+          foundIds.push(bestMatch.label);
+        }
+      });
+
+      setDetectedIds(foundIds);
+      setScanProgress(100);
+      setDetectionLog(prev => [`✅ Analysis Complete. Matched ${foundIds.length} students.`, ...prev]);
+
+      // 3. FINALIZE RESULTS & ADD OVERLAY TO PROOF
+      const newMarks = { ...attendanceMarks };
+      const presentList = [];
+      const absentList = [];
+
+      filteredBySemester.forEach(student => {
+        const isPresent = foundIds.includes(student.id || student._id);
+        newMarks[student.id || student._id] = isPresent ? 'Present' : 'Absent';
+        if (isPresent) {
+          presentList.push(student);
         } else {
-          setDetectionLog(prev => [`[!] No Match for ID: ${student.enrollmentNumber.slice(-4)}`, ...prev.slice(0, 4)]);
+          absentList.push(student);
         }
-      }
+      });
 
-      if (progress >= 100) {
-        clearInterval(scanIntervalRef.current);
-        scanIntervalRef.current = null;
-        setDetectionLog(prev => ['[DONE] Scan finalized.', ...prev]);
+      // ADD OVERLAY TO THE CAPTURED IMAGE
+      const finalCanvas = document.createElement('canvas');
+      finalCanvas.width = canvas.width;
+      finalCanvas.height = canvas.height;
+      const fctx = finalCanvas.getContext('2d');
+      fctx.drawImage(img, 0, 0);
+      
+      // Draw Header Overlay
+      fctx.fillStyle = 'rgba(138, 44, 32, 0.85)';
+      fctx.fillRect(0, 0, finalCanvas.width, 120);
+      
+      fctx.fillStyle = 'white';
+      fctx.font = 'bold 28px "Inter", Arial';
+      const now = new Date();
+      fctx.fillText(`MRSPTU ATTENDANCE PROOF | ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`, 30, 50);
+      fctx.font = '22px "Inter", Arial';
+      fctx.fillText(`Subject: ${selectedSubject || teacher.primarySubject} | Semester: ${semesterFilter}`, 30, 90);
+      
+      fctx.textAlign = 'right';
+      fctx.font = 'bold 40px "Inter", Arial';
+      fctx.fillText(`${presentList.length} STUDENTS PRESENT`, finalCanvas.width - 30, 75);
+
+      const stampedPhoto = finalCanvas.toDataURL('image/jpeg', 0.8);
+      setGroupPhoto(stampedPhoto);
+      setCapturedImage(stampedPhoto);
+
+      setAttendanceMarks(newMarks);
+      setScanResultsData({ present: presentList, absent: absentList });
+
+      setTimeout(() => {
+        setIsAnalyzing(false);
+        setShowScanResults(true);
+      }, 1500);
+
+    } catch (err) {
+      console.error("Analysis Error:", err);
+      setDetectionLog(prev => ['❌ Error during neural analysis.', ...prev]);
+      setIsAnalyzing(false);
+    }
+  };
+
+  const startLiveScan = () => {
+    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+    
+    setDetectionLog(prev => ['🚀 Live Neural Engine Active', ...prev]);
+    
+    scanIntervalRef.current = setInterval(async () => {
+      if (!videoRef.current || !faceMatchers || isAnalyzing || showScanResults) return;
+      
+      try {
+        // Use TinyFaceDetector for real-time performance
+        const detections = await window.faceapi.detectAllFaces(
+          videoRef.current, 
+          new window.faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 })
+        ).withFaceLandmarks().withFaceDescriptors();
         
-        // Capture Class Photo as Evidence
-        let imageData = null;
-        if (videoRef.current) {
-          const canvas = document.createElement('canvas');
-          canvas.width = 480;
-          canvas.height = 360;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-          imageData = canvas.toDataURL('image/jpeg', 0.4);
-          setCapturedImage(imageData);
+        if (detections.length > 0) {
+          const foundIdsInFrame = [];
+          detections.forEach(detection => {
+            const bestMatch = faceMatchers.findBestMatch(detection.descriptor);
+            if (bestMatch.label !== 'unknown') {
+              foundIdsInFrame.push(bestMatch.label);
+              
+              // If it's a new match, trigger the popup
+              setDetectedIds(prev => {
+                if (!prev.includes(bestMatch.label)) {
+                   const student = students.find(s => (s.id === bestMatch.label || s._id === bestMatch.label));
+                   if (student) {
+                      setLastDetectedStudent(student.fullName);
+                      setLastDetectedPhoto(student.enrolledFace || student.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(student.fullName)}&background=8a2c20&color=fff`);
+                      setTimeout(() => setLastDetectedStudent(''), 2500);
+                   }
+                   return [...prev, bestMatch.label];
+                }
+                return prev;
+              });
+
+              // Mark as present in attendanceMarks
+              setAttendanceMarks(prev => ({ ...prev, [bestMatch.label]: 'Present' }));
+            }
+          });
+          
+          if (foundIdsInFrame.length > 0) {
+             setDetectionLog(prev => [`📡 Live: Detected ${foundIdsInFrame.length} students`, ...prev.slice(0, 5)]);
+          }
         }
-
-        // Finalize results: detected = Present, others = Absent
-        const newMarks = { ...attendanceMarks };
-        filteredBySemester.forEach(student => {
-          newMarks[student.id] = detectedIds.includes(student.id) ? 'Present' : 'Absent';
-        });
-        setAttendanceMarks(newMarks);
-        
-        setTimeout(() => {
-          setIsScanning(false);
-          stopCamera();
-          setMarkingMode('manual'); // Switch back to manual so teacher can review/edit
-          setSaveStatus({ text: `Scan complete! ${detectedIds.length} students detected. Please review and save.`, type: 'success' });
-          setTimeout(() => setSaveStatus({ text: '', type: '' }), 4000);
-        }, 1000);
+      } catch (err) {
+        console.warn("Live scan frame error:", err);
       }
-    }, 80);
+    }, 1500); // Run every 1.5 seconds for optimal performance/stability
+  };
+
+  const manualIdentify = (student) => {
+    if (detectedIds.includes(student.id)) return;
+    
+    setDetectedIds(prev => [...prev, student.id]);
+    setAttendanceMarks(prev => ({ ...prev, [student.id]: 'Present' }));
+    setLastDetectedStudent(student.fullName);
+    setLastDetectedPhoto(student.enrolledFace || student.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(student.fullName)}&background=8a2c20&color=fff`);
+    setDetectionLog(prev => [`✓ Verified: ${student.fullName}`, ...prev.slice(0, 5)]);
+    
+    setTimeout(() => {
+      setLastDetectedStudent('');
+    }, 2000);
   };
 
   const getAvailableSemesters = () => {
@@ -247,16 +471,48 @@ function TeacherProfile() {
     });
   };
 
+  const getIsDuplicate = () => {
+    if (!semesterFilter || !selectedSubject || !selectedSession) return false;
+    const now = new Date();
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    
+    return attendanceRecords.some(r => 
+      r.date === localDate && 
+      r.semester === semesterFilter && 
+      r.subject === selectedSubject && 
+      r.session === selectedSession
+    );
+  };
+
   const handleStatusChange = (studentId, status) => {
     setAttendanceMarks(prev => ({ ...prev, [studentId]: status }));
   };
 
-  const handleSaveAttendance = () => {
-    if (semesterFilter === 'All') {
+  const handleSaveAttendance = async () => {
+    if (semesterFilter === 'All' || !semesterFilter) {
       alert("Please select a specific semester before saving attendance.");
-      return;
+      return false;
     }
-    saveAttendanceData(attendanceMarks, capturedImage);
+    if (!selectedCourse || selectedCourse === 'All') {
+      alert("Please select a specific course before saving attendance.");
+      return false;
+    }
+    if (!selectedSubject) {
+      alert("Please select a subject before saving attendance.");
+      return false;
+    }
+    
+    // Duplicate Check logic before final save
+    if (getIsDuplicate()) {
+      alert(`⚠️ DUPLICATE ENTRY: Attendance for ${selectedSubject} (${selectedSession}) has already been marked today.\n\nPlz set other lecture session or edit the existing record in History.`);
+      return false;
+    }
+
+    if (!capturedImage && !groupPhoto) {
+      alert("Attendance Proof is REQUIRED. Please use the Class Camera to capture a proof photo of the class before saving.");
+      return false;
+    }
+    return await saveAttendanceData(attendanceMarks, capturedImage || groupPhoto);
   };
 
   const saveAttendanceData = async (marks, proof) => {
@@ -287,10 +543,12 @@ function TeacherProfile() {
 
       setSaveStatus({ text: `Attendance for ${semesterFilter} saved successfully!`, type: 'success' });
       setCapturedImage(null); 
+      loadHistory(teacher); // Ensure history is updated immediately
       setTimeout(() => setSaveStatus({ text: '', type: '' }), 3000);
       return true;
     } catch (err) {
       console.error('Save error:', err);
+      alert('Failed to save attendance: ' + err.message); // Added explicit alert for debugging
       setSaveStatus({ text: 'Failed to save attendance: ' + err.message, type: 'error' });
       return false;
     }
@@ -460,8 +718,9 @@ function TeacherProfile() {
 
   if (!teacher) return null;
 
-  const filteredBySemester = semesterFilter === '' ? [] : students.filter(s => {
-    if (semesterFilter === 'All') return true;
+  const filteredBySemester = (isLoadingStudents) ? [] : students.filter(s => {
+    if (selectedCourse && selectedCourse !== 'All' && s.course !== selectedCourse) return false;
+    if (semesterFilter === '' || semesterFilter === 'All') return true;
     const semNum = semesterFilter.split(' ')[0].replace(/[^0-9]/g, '');
     return String(s.semester) === semNum || String(s.semester) === semesterFilter;
   });
@@ -582,17 +841,29 @@ function TeacherProfile() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h3 style={{ color: '#8a2c20', borderBottom: '1px solid #eee', paddingBottom: '10px', margin: 0 }}>Students List</h3>
-              <select 
-                value={semesterFilter} 
-                onChange={(e) => setSemesterFilter(e.target.value)}
-                style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
-              >
-                <option value="">Select Semester</option>
-                <option value="All">All Semesters</option>
-                {getAvailableSemesters().map(sem => (
-                  <option key={sem} value={sem}>{sem}</option>
-                ))}
-              </select>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <select 
+                  value={selectedCourse} 
+                  onChange={(e) => setSelectedCourse(e.target.value)}
+                  style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
+                >
+                  <option value="All">All Courses</option>
+                  {[...new Set(students.map(s => s.course))].filter(Boolean).sort().map(course => (
+                    <option key={course} value={course}>{course}</option>
+                  ))}
+                </select>
+                <select 
+                  value={semesterFilter} 
+                  onChange={(e) => setSemesterFilter(e.target.value)}
+                  style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
+                >
+                  <option value="">Select Semester</option>
+                  <option value="All">All Semesters</option>
+                  {getAvailableSemesters().map(sem => (
+                    <option key={sem} value={sem}>{sem}</option>
+                  ))}
+                </select>
+              </div>
               {filteredBySemester.length > 0 && (
                 <button 
                   onClick={handleDownloadPDF}
@@ -602,8 +873,8 @@ function TeacherProfile() {
               )}
             </div>
             
-            {filteredBySemester.length === 0 ? (
-              <p style={{ textAlign: 'center', padding: '40px', color: '#999', fontStyle: 'italic' }}>No students found {semesterFilter !== 'All' ? `for ${semesterFilter}` : 'in your department'}.</p>
+            {(filteredBySemester.length === 0 && !isLoadingStudents) ? (
+              <p style={{ textAlign: 'center', padding: '40px', color: '#999', fontStyle: 'italic' }}>No students found {semesterFilter && semesterFilter !== 'All' ? `for ${semesterFilter}` : 'in your department'}.</p>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
@@ -615,46 +886,46 @@ function TeacherProfile() {
                     <th style={thStyle}>Course</th>
                     <th style={thStyle}>Semester</th>
                     <th style={thStyle}>Email</th>
-                    <th style={thStyle}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredBySemester.map((s) => (
-                    <tr key={s.id} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={tdStyle}>
-                        {s.profilePhoto ? (
-                          <img src={s.profilePhoto} alt="Reg" style={{ width: '35px', height: '35px', borderRadius: '4px', objectFit: 'cover', border: '1px solid #ddd' }} />
-                        ) : (
-                          <div style={{ width: '35px', height: '35px', borderRadius: '4px', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#999' }}>N/A</div>
-                        )}
-                      </td>
-                      <td style={tdStyle}>
-                        {s.enrolledFace ? (
-                          <img src={s.enrolledFace} alt="Enrolled" style={{ width: '35px', height: '35px', borderRadius: '4px', objectFit: 'cover', border: '2px solid #27ae60' }} />
-                        ) : (
-                          <div style={{ width: '35px', height: '35px', borderRadius: '4px', background: '#fff3f3', border: '1px dashed #e74c3c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#e74c3c' }}>Missing</div>
-                        )}
-                      </td>
-                      <td style={tdStyle}>{s.enrollmentNumber}</td>
-                      <td style={{ ...tdStyle, fontWeight: 600 }}>{s.fullName}</td>
-                      <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{s.course}</span></td>
-                      <td style={tdStyle}>{s.semester}</td>
-                      <td style={tdStyle}>{s.email}</td>
-                      <td style={tdStyle}>
-                        <button 
-                          onClick={() => {
-                            const url = `${window.location.origin}/upload-face?rollNo=${s.enrollmentNumber}`;
-                            navigator.clipboard.writeText(url);
-                            setSaveStatus({ text: `Link for ${s.fullName} copied!`, type: 'success' });
-                            setTimeout(() => setSaveStatus({ text: '', type: '' }), 3000);
-                          }}
-                          style={{ background: '#8a2c20', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
-                        >
-                          🔗 Copy Link
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {isLoadingStudents ? (
+                    Array(5).fill(0).map((_, i) => (
+                      <tr key={`skel-stud-${i}`} style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '150px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '60px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '180px' }}></div></td>
+                      </tr>
+                    ))
+                  ) : (
+                    filteredBySemester.map((s) => (
+                      <tr key={s.id} style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={tdStyle}>
+                          {s.profilePhoto ? (
+                            <img src={s.profilePhoto} alt="Reg" style={{ width: '35px', height: '35px', borderRadius: '4px', objectFit: 'cover', border: '1px solid #ddd' }} />
+                          ) : (
+                            <div style={{ width: '35px', height: '35px', borderRadius: '4px', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#999' }}>N/A</div>
+                          )}
+                        </td>
+                        <td style={tdStyle}>
+                          {s.enrolledFace ? (
+                            <img src={s.enrolledFace} alt="Enrolled" style={{ width: '35px', height: '35px', borderRadius: '4px', objectFit: 'cover', border: '2px solid #27ae60' }} />
+                          ) : (
+                            <div style={{ width: '35px', height: '35px', borderRadius: '4px', background: '#fff3f3', border: '1px dashed #e74c3c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#e74c3c' }}>Missing</div>
+                          )}
+                        </td>
+                        <td style={tdStyle}>{s.enrollmentNumber}</td>
+                        <td style={{ ...tdStyle, fontWeight: 600 }}>{s.fullName}</td>
+                        <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{s.course}</span></td>
+                        <td style={tdStyle}>{s.semester}</td>
+                        <td style={tdStyle}>{s.email}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             )}
@@ -663,188 +934,288 @@ function TeacherProfile() {
 
         {activeTab === 'attendance' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', flexWrap: 'wrap', gap: '15px' }}>
-              <div>
-                <h3 style={{ color: '#8a2c20', margin: 0 }}>Mark Attendance</h3>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+            <div style={{ background: '#fff', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #edf2f7', overflow: 'hidden', marginBottom: '30px' }}>
+              {/* Header & Mode Switcher */}
+              <div style={{ padding: '25px 30px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(to right, #fcfcfc, #fff)' }}>
+                <div>
+                  <h3 style={{ color: '#660000', margin: 0, fontSize: '1.6rem', fontWeight: '800', letterSpacing: '-0.5px' }}>Attendance Management</h3>
+                  <p style={{ color: '#64748b', margin: '5px 0 0 0', fontSize: '14px' }}>Session management and automated student verification</p>
+                </div>
+                <div style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                   <button 
                     onClick={() => { setMarkingMode('manual'); stopCamera(); }}
                     style={{ 
-                      padding: '6px 15px', borderRadius: '20px', border: '1px solid #ccc', cursor: 'pointer',
-                      background: markingMode === 'manual' ? '#8a2c20' : 'white',
-                      color: markingMode === 'manual' ? 'white' : '#666',
-                      fontSize: '13px', fontWeight: 'bold'
+                      padding: '10px 24px', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                      background: markingMode === 'manual' ? '#660000' : 'transparent',
+                      color: markingMode === 'manual' ? 'white' : '#64748b',
+                      fontSize: '14px', fontWeight: '700', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      boxShadow: markingMode === 'manual' ? '0 4px 10px rgba(102,0,0,0.2)' : 'none'
                     }}
                   >
-                    📝 Manual Marking
+                    <span>📝</span> Manual Entry
                   </button>
                   <button 
                     onClick={() => setMarkingMode('smart')}
                     style={{ 
-                      padding: '6px 15px', borderRadius: '20px', border: '1px solid #ccc', cursor: 'pointer',
-                      background: markingMode === 'smart' ? '#8a2c20' : 'white',
-                      color: markingMode === 'smart' ? 'white' : '#666',
-                      fontSize: '13px', fontWeight: 'bold'
+                      padding: '10px 24px', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                      background: markingMode === 'smart' ? '#660000' : 'transparent',
+                      color: markingMode === 'smart' ? 'white' : '#64748b',
+                      fontSize: '14px', fontWeight: '700', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      boxShadow: markingMode === 'smart' ? '0 4px 10px rgba(102,0,0,0.2)' : 'none'
                     }}
                   >
-                    📸 Smart Attendance
+                    <span>📸</span> Smart Scanner
                   </button>
-                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px' }}>
-                    <div style={{ display: 'flex', background: 'white', border: '1px solid #ddd', borderRadius: '25px', padding: '2px 5px 2px 15px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '12px', color: '#888', marginRight: '5px' }}>Roll No:</span>
-                      <input 
-                        type="text" 
-                        placeholder="Optional" 
-                        value={targetRollNo}
-                        onChange={(e) => setTargetRollNo(e.target.value)}
-                        style={{ border: 'none', outline: 'none', width: '80px', fontSize: '13px', fontWeight: 'bold', color: '#8a2c20' }}
-                      />
-                      <button 
-                        onClick={() => {
-                            const url = `${window.location.origin}/upload-face${targetRollNo ? `?rollNo=${targetRollNo}` : ''}`;
-                            navigator.clipboard.writeText(url);
-                            setSaveStatus({ text: targetRollNo ? `Link for ${targetRollNo} copied!` : 'General Enrollment Link copied!', type: 'success' });
-                            setTimeout(() => setSaveStatus({ text: '', type: '' }), 3000);
-                        }}
-                        style={{ 
-                          padding: '6px 15px', borderRadius: '20px', border: 'none', cursor: 'pointer',
-                          background: '#8a2c20',
-                          color: 'white',
-                          fontSize: '13px', fontWeight: 'bold', marginLeft: '5px'
-                        }}
-                      >
-                        🔗 Copy Enrollment Link
-                      </button>
+                </div>
+              </div>
+
+              {/* Filters Bar */}
+              <div style={{ padding: '25px 30px', background: '#fff' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ fontSize: '12px', color: '#660000', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Course / Program</label>
+                    <select 
+                      value={selectedCourse} 
+                      onChange={(e) => { setSelectedCourse(e.target.value); setSelectedSubject(''); }}
+                      style={{ padding: '12px 16px', borderRadius: '10px', border: '1.5px solid #e2e8f0', background: '#f8fafc', fontWeight: '600', fontSize: '15px', color: '#1e293b', appearance: 'none', cursor: 'pointer' }}
+                    >
+                      <option value="">Choose Course</option>
+                      <option value="All">All Courses</option>
+                      {[...new Set([...Object.keys(subjectMapping), ...students.map(s => s.course)])].filter(Boolean).sort().map(course => (
+                        <option key={course} value={course}>{course}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ fontSize: '12px', color: '#660000', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Academic Semester</label>
+                    <select 
+                      value={semesterFilter} 
+                      onChange={(e) => { setSemesterFilter(e.target.value); setSelectedSubject(''); }}
+                      style={{ padding: '12px 16px', borderRadius: '10px', border: '1.5px solid #e2e8f0', background: '#f8fafc', fontWeight: '600', fontSize: '15px', color: '#1e293b', appearance: 'none', cursor: 'pointer' }}
+                    >
+                      <option value="">Choose Semester</option>
+                      {getAvailableSemesters().map(sem => (
+                        <option key={sem} value={sem}>{sem}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                     <label style={{ fontSize: '12px', color: '#660000', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Assigned Subject</label>
+                     <select 
+                       value={selectedSubject} 
+                       onChange={(e) => setSelectedSubject(e.target.value)}
+                       style={{ padding: '12px 16px', borderRadius: '10px', border: '1.5px solid #e2e8f0', background: '#f8fafc', fontWeight: '600', fontSize: '15px', color: '#1e293b', appearance: 'none', cursor: 'pointer' }}
+                     >
+                       <option value="">Choose Subject</option>
+                       {(() => {
+                         const semNum = semesterFilter?.match(/\d+/)?.[0];
+                         const subjects = (subjectMapping[selectedCourse] && semNum) ? subjectMapping[selectedCourse][semNum] : null;
+                         if (subjects) return subjects.map(s => <option key={s} value={s}>{s}</option>);
+                         return <option value={teacher.primarySubject}>{teacher.primarySubject}</option>;
+                       })()}
+                     </select>
+                   </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ fontSize: '12px', color: '#660000', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Class Session</label>
+                      {attendanceRecords.some(r => 
+                        r.date === `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}` && 
+                        r.semester === semesterFilter && 
+                        r.subject === selectedSubject && 
+                        r.session === selectedSession
+                      ) && (
+                        <span style={{ fontSize: '10px', color: '#e74c3c', fontWeight: 'bold' }}>⚠️ ALREADY MARKED</span>
+                      )}
                     </div>
+                    <select 
+                      value={selectedSession} 
+                      onChange={(e) => setSelectedSession(e.target.value)}
+                      style={{ padding: '12px 16px', borderRadius: '10px', border: '1.5px solid #e2e8f0', background: '#f8fafc', fontWeight: '600', fontSize: '15px', color: '#1e293b', appearance: 'none', cursor: 'pointer' }}
+                    >
+                      <option value="Lecture 1">Lecture 1</option>
+                      <option value="Lecture 2">Lecture 2</option>
+                      <option value="Lecture 3">Lecture 3</option>
+                      <option value="Extra Lecture">Extra Lecture</option>
+                    </select>
                   </div>
                 </div>
               </div>
-              
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <select 
-                  value={semesterFilter} 
-                  onChange={(e) => setSemesterFilter(e.target.value)}
-                  style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd' }}
-                >
-                  <option value="">Select Semester</option>
-                  {getAvailableSemesters().map(sem => (
-                    <option key={sem} value={sem}>{sem}</option>
-                  ))}
-                </select>
-                <div style={{ background: '#f5f5f5', padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', color: '#666', fontWeight: 600 }}>
-                  Date: {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                </div>
-                <select 
-                  value={selectedSession} 
-                  onChange={(e) => setSelectedSession(e.target.value)}
-                  style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', fontWeight: 600, color: '#8a2c20' }}
-                >
-                  <option value="Lecture 1">Lecture 1</option>
-                  <option value="Lecture 2">Lecture 2</option>
-                  <option value="Lecture 3">Lecture 3</option>
-                  <option value="Extra Lecture">Extra Lecture</option>
-                </select>
-                <select 
-                  value={selectedSubject} 
-                  onChange={(e) => setSelectedSubject(e.target.value)}
-                  style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', fontWeight: 600, color: '#8a2c20' }}
-                >
-                  <option value="">Select Subject</option>
-                  {(subjectMapping[filteredBySemester[0]?.course] && subjectMapping[filteredBySemester[0]?.course][semesterFilter.split(' ')[0]]) ? (
-                    subjectMapping[filteredBySemester[0]?.course][semesterFilter.split(' ')[0]].map(sub => (
-                      <option key={sub} value={sub}>{sub}</option>
-                    ))
-                  ) : (
-                    <option value={teacher.primarySubject}>{teacher.primarySubject}</option>
-                  )}
-                </select>
-                {markingMode === 'manual' && filteredBySemester.length > 0 && (
-                  <div style={{ display: 'flex', gap: '10px' }}>
+
+              {/* Utility & Actions Footer */}
+              <div style={{ padding: '20px 30px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#fff', padding: '10px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                     <span style={{ fontSize: '18px' }}>📅</span>
+                     <span style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                   </div>
+                   
+                   <div style={{ display: 'flex', background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '4px 4px 4px 15px', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '700', marginRight: '10px' }}>ENROLL LINK:</span>
+                    <input 
+                      type="text" 
+                      placeholder="Roll No (Opt)" 
+                      value={targetRollNo}
+                      onChange={(e) => setTargetRollNo(e.target.value)}
+                      style={{ border: 'none', outline: 'none', width: '100px', fontSize: '13px', fontWeight: '700', color: '#660000', background: 'transparent' }}
+                    />
                     <button 
                       onClick={() => {
-                        const allPresent = {};
-                        filteredBySemester.forEach(s => allPresent[s.id] = 'Present');
-                        setAttendanceMarks(allPresent);
+                          const url = `${window.location.origin}/upload-face${targetRollNo ? `?rollNo=${targetRollNo}` : ''}`;
+                          navigator.clipboard.writeText(url);
+                          setSaveStatus({ text: 'Copied!', type: 'success' });
+                          setTimeout(() => setSaveStatus({ text: '', type: '' }), 2000);
                       }}
-                      style={{ background: '#e8f5e9', color: '#2e7d32', border: '1px solid #2e7d32', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+                      style={{ background: '#f1f5f9', color: '#1e293b', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: '800', padding: '8px 15px', borderRadius: '8px', marginLeft: '5px', transition: 'all 0.2s' }}
                     >
-                      ✓ All Present
-                    </button>
-                    <button 
-                      onClick={() => {
-                        const allAbsent = {};
-                        filteredBySemester.forEach(s => allAbsent[s.id] = 'Absent');
-                        setAttendanceMarks(allAbsent);
-                      }}
-                      style={{ background: '#ffebee', color: '#c62828', border: '1px solid #c62828', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
-                    >
-                      ✗ All Absent
-                    </button>
-                    <button 
-                      onClick={handleSaveAttendance}
-                      style={{ background: '#8a2c20', color: 'white', border: 'none', padding: '8px 25px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 8px rgba(138,44,32,0.2)' }}
-                    >
-                      Save Attendance
+                      COPY 🔗
                     </button>
                   </div>
-                )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '15px' }}>
+                  {markingMode === 'manual' && filteredBySemester.length > 0 && (
+                    <>
+                      <button 
+                        onClick={startCamera}
+                        style={{ 
+                          background: '#0ea5e9', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '12px', 
+                          cursor: 'pointer', fontWeight: '800', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '10px',
+                          transition: 'all 0.3s', boxShadow: '0 4px 12px rgba(14,165,233,0.2)'
+                        }}
+                      >
+                        <span>📸</span> Capture Proof
+                      </button>
+                      <button 
+                        onClick={handleSaveAttendance}
+                        disabled={!capturedImage}
+                        style={{ 
+                          background: capturedImage ? '#660000' : '#cbd5e1', 
+                          color: 'white', border: 'none', padding: '12px 32px', borderRadius: '12px', 
+                          cursor: capturedImage ? 'pointer' : 'not-allowed', 
+                          fontWeight: '800', fontSize: '14px', transition: 'all 0.3s',
+                          boxShadow: capturedImage ? '0 4px 15px rgba(102,0,0,0.25)' : 'none'
+                        }}
+                      >
+                        Finalize & Submit
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
+            {capturedImage && markingMode === 'manual' && (
+              <div style={{ marginBottom: '20px', padding: '15px', background: '#f0f9ff', borderRadius: '10px', border: '1px solid #bae6fd', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <img src={capturedImage} style={{ width: '100px', height: '60px', borderRadius: '6px', objectFit: 'cover', border: '2px solid #0ea5e9' }} alt="Proof" />
+                <div>
+                   <div style={{ fontWeight: 'bold', color: '#0369a1' }}>✅ Session Proof Captured</div>
+                   <div style={{ fontSize: '12px', color: '#0c4a6e' }}>This photo will be saved as official evidence of this attendance session.</div>
+                </div>
+                <button 
+                  onClick={() => { setCapturedImage(null); setGroupPhoto(null); }}
+                  style={{ marginLeft: 'auto', background: 'none', border: '1px solid #0ea5e9', color: '#0ea5e9', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer', fontSize: '12px' }}
+                >
+                  Change Photo
+                </button>
+              </div>
+            )}
+
             {markingMode === 'manual' ? (
               <>
-                {filteredBySemester.length > 0 ? (
+                {(filteredBySemester.length > 0 || isLoadingStudents) ? (
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
-                  <tr style={{ background: '#f8f9fa', textTransform: 'uppercase', fontSize: '13px' }}>
-                    <th style={thStyle}>Photo</th>
-                    <th style={thStyle}>Roll No</th>
-                    <th style={thStyle}>Name</th>
-                    <th style={thStyle}>Session</th>
-                    <th style={thStyle}>Status</th>
+                  <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #e2e8f0' }}>
+                    <th style={{ ...thStyle, color: '#475569', padding: '15px' }}>Student Photo</th>
+                    <th style={{ ...thStyle, color: '#475569', padding: '15px' }}>Roll Number</th>
+                    <th style={{ ...thStyle, color: '#475569', padding: '15px' }}>Full Name</th>
+                    <th style={{ ...thStyle, color: '#475569', padding: '15px' }}>Session</th>
+                    <th style={{ ...thStyle, color: '#475569', padding: '15px' }}>Subject</th>
+                    <th style={{ ...thStyle, color: '#475569', padding: '15px', textAlign: 'center' }}>Attendance Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredBySemester.map((s) => (
-                    <tr key={`att-${s.id}`} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={tdStyle}>
-                        {s.profilePhoto ? (
-                          <img src={s.profilePhoto} alt="S" style={{ width: '35px', height: '35px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #ddd' }} />
-                        ) : (
-                          <div style={{ width: '35px', height: '35px', borderRadius: '50%', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', color: '#888' }}>
-                            {s.fullName.charAt(0).toUpperCase()}
+                  {isLoadingStudents ? (
+                    Array(5).fill(0).map((_, i) => (
+                      <tr key={`skel-att-${i}`} style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80%' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                        <td style={tdStyle}>
+                          <div style={{ display: 'flex', gap: '15px' }}>
+                            <div className="skeleton skeleton-text" style={{ width: '60px' }}></div>
+                            <div className="skeleton skeleton-text" style={{ width: '60px' }}></div>
                           </div>
-                        )}
-                      </td>
-                      <td style={tdStyle}>{s.enrollmentNumber}</td>
-                      <td style={tdStyle}>{s.fullName}</td>
-                      <td style={tdStyle}>{selectedSubject || teacher.primarySubject}</td>
-                      <td style={tdStyle}>
-                        <div style={{ display: 'flex', gap: '15px' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
-                            <input 
-                              type="radio" 
-                              name={`status-${s.id}`} 
-                              checked={attendanceMarks[s.id] === 'Present'} 
-                              onChange={() => handleStatusChange(s.id, 'Present')}
-                            /> Present
-                          </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
-                            <input 
-                              type="radio" 
-                              name={`status-${s.id}`} 
-                              checked={attendanceMarks[s.id] === 'Absent'} 
-                              onChange={() => handleStatusChange(s.id, 'Absent')}
-                            /> Absent
-                          </label>
-                        </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : filteredBySemester.length > 0 ? (
+                    filteredBySemester.map((s) => (
+                      <tr key={`att-${s.id}`} style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={tdStyle}>
+                          {s.profilePhoto ? (
+                            <img src={s.profilePhoto} alt="S" style={{ width: '35px', height: '35px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #ddd' }} />
+                          ) : (
+                            <div style={{ width: '35px', height: '35px', borderRadius: '50%', background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', color: '#888' }}>
+                              {s.fullName.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                        </td>
+                        <td style={tdStyle}>{s.enrollmentNumber}</td>
+                        <td style={tdStyle}>{s.fullName}</td>
+                        <td style={tdStyle}>{selectedSession}</td>
+                        <td style={{ ...tdStyle, color: '#660000', fontWeight: 'bold' }}>{selectedSubject || 'Not Selected'}</td>
+                        <td style={tdStyle}>
+                          <div style={{ display: 'flex', gap: '15px' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                              <input 
+                                type="radio" 
+                                name={`status-${s.id}`} 
+                                checked={attendanceMarks[s.id] === 'Present'} 
+                                onChange={() => handleStatusChange(s.id, 'Present')}
+                              /> Present
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                              <input 
+                                type="radio" 
+                                name={`status-${s.id}`} 
+                                checked={attendanceMarks[s.id] === 'Absent'} 
+                                onChange={() => handleStatusChange(s.id, 'Absent')}
+                              /> Absent
+                            </label>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="6" style={{ padding: '60px 40px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '48px', marginBottom: '20px' }}>👥</div>
+                        <h4 style={{ color: '#1e293b', margin: '0 0 10px 0', fontSize: '18px', fontWeight: '800' }}>No Students Found</h4>
+                        <p style={{ color: '#64748b', margin: 0, fontSize: '15px' }}>
+                          We couldn't find any students for {semesterFilter !== 'All' ? semesterFilter : 'your department'} in {selectedCourse !== 'All' ? selectedCourse : 'any course'}.<br/>
+                          Try adjusting your filters or contact the administrator.
+                        </p>
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
                 ) : (
-                  <p style={{ textAlign: 'center', padding: '40px', color: '#999', fontStyle: 'italic' }}>Please select a specific semester to mark attendance.</p>
+                  <div style={{ textAlign: 'center', padding: '80px 40px', background: '#fff', borderRadius: '24px', border: '2px dashed #e2e8f0', margin: '20px 0', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.02)' }}>
+                    <div style={{ fontSize: '5rem', marginBottom: '25px', filter: 'grayscale(100%) brightness(1.2)', opacity: 0.5 }}>📋</div>
+                    <h3 style={{ color: '#1e293b', fontSize: '1.8rem', fontWeight: '800', margin: '0 0 10px 0' }}>Data Selection Required</h3>
+                    <p style={{ color: '#64748b', fontSize: '1.1rem', maxWidth: '500px', margin: '0 auto', lineHeight: '1.6' }}>
+                      Please select a <strong>Course</strong> and <strong>Semester</strong> from the control panel above to load the student attendance sheet.
+                    </p>
+                  </div>
                 )}
               </>
             ) : (
@@ -864,107 +1235,362 @@ function TeacherProfile() {
                     </button>
                   </div>
                 ) : (
-                  <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-                    <div style={{ position: 'relative', borderRadius: '20px', overflow: 'hidden', background: '#000', aspectRatio: '16/9', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}>
-                      <video 
-                        ref={videoRef} 
-                        autoPlay 
-                        playsInline
-                        muted
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                      />
-                      
-                      {/* FUTURISTIC OVERLAYS */}
-                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none' }}>
-                        {/* Time/Date Overlay */}
-                        <div style={{ position: 'absolute', top: '20px', left: '20px', color: 'white', textShadow: '2px 2px 4px rgba(0,0,0,0.8)', textAlign: 'left', fontFamily: 'monospace' }}>
-                          <div style={{ fontSize: '12px', opacity: 0.8 }}>SYSTEM_CORE_LIVE</div>
-                          <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{currentTime.toLocaleTimeString()}</div>
-                          <div style={{ fontSize: '14px' }}>{currentTime.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                  <div style={{ 
+                    position: 'fixed', 
+                    top: 0, 
+                    left: 0, 
+                    width: '100vw', 
+                    height: '100vh', 
+                    background: '#000', 
+                    zIndex: 3000, 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontFamily: "'Inter', sans-serif"
+                  }}>
+                    {/* FULL SCREEN VIDEO */}
+                    <video 
+                      ref={videoRef} 
+                      autoPlay 
+                      playsInline
+                      muted
+                      style={{ 
+                        width: '100%', 
+                        height: '100%', 
+                        objectFit: 'cover',
+                        position: 'absolute'
+                      }} 
+                    />
+
+                    {/* SCANNER OVERLAYS (ONLY IF NOT SHOWING RESULTS) */}
+                    {!showScanResults ? (
+                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', display: 'flex' }}>
+                        {/* MAIN CAMERA VIEW */}
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                          {/* Header Overlay */}
+                          <div style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.8), transparent)', padding: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div style={{ color: 'white' }}>
+                              <div style={{ fontSize: '12px', letterSpacing: '2px', color: '#8a2c20', fontWeight: 'bold', marginBottom: '5px' }}>GROUP_PHOTO_ANALYSIS_ENGINE</div>
+                              <h2 style={{ margin: 0, fontSize: '24px' }}>{semesterFilter} Smart Attendance</h2>
+                              <div style={{ fontSize: '14px', opacity: 0.7 }}>{selectedSubject || teacher.primarySubject}</div>
+                            </div>
+                            <div style={{ textAlign: 'right', color: 'white', fontFamily: 'monospace' }}>
+                              <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{currentTime.toLocaleTimeString()}</div>
+                              <div style={{ fontSize: '12px', opacity: 0.8 }}>{currentTime.toLocaleDateString()}</div>
+                            </div>
+                          </div>
+
+                          {/* Center Frame - NOW FULL SCREEN */}
+                          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                            {groupPhoto ? (
+                                <img src={groupPhoto} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Group Class" />
+                            ) : (
+                                <div style={{ 
+                                    width: '100%', 
+                                    height: '100%', 
+                                    border: '2px solid rgba(138,44,32,0.3)', 
+                                    position: 'relative'
+                                  }}>
+                                    {/* Corners */}
+                                    <div style={{ position: 'absolute', top: '20px', left: '20px', width: '60px', height: '60px', borderTop: '8px solid #8a2c20', borderLeft: '8px solid #8a2c20', borderTopLeftRadius: '20px' }}></div>
+                                    <div style={{ position: 'absolute', top: '20px', right: '20px', width: '60px', height: '60px', borderTop: '8px solid #8a2c20', borderRight: '8px solid #8a2c20', borderTopRightRadius: '20px' }}></div>
+                                    <div style={{ position: 'absolute', bottom: '20px', left: '20px', width: '60px', height: '60px', borderBottom: '8px solid #8a2c20', borderLeft: '8px solid #8a2c20', borderBottomLeftRadius: '20px' }}></div>
+                                    <div style={{ position: 'absolute', bottom: '20px', right: '20px', width: '60px', height: '60px', borderBottom: '8px solid #8a2c20', borderRight: '8px solid #8a2c20', borderBottomRightRadius: '20px' }}></div>
+                                </div>
+                            )}
+
+                            {/* Analysis Status Overlay */}
+                            {isAnalyzing && (
+                              <div style={{ 
+                                position: 'absolute', 
+                                top: '50%', 
+                                left: '50%', 
+                                transform: 'translate(-50%, -50%)', 
+                                background: 'rgba(0,0,0,0.85)', 
+                                padding: '40px', 
+                                borderRadius: '30px', 
+                                textAlign: 'center',
+                                border: '1px solid #8a2c20',
+                                backdropFilter: 'blur(10px)',
+                                zIndex: 3200,
+                                minWidth: '400px'
+                              }}>
+                                <div style={{ fontSize: '3rem', marginBottom: '20px', animation: 'spin 2s linear infinite' }}>🧠</div>
+                                <h3 style={{ color: 'white', margin: '0 0 10px 0' }}>Analyzing Group Photo</h3>
+                                <p style={{ color: '#aaa', fontSize: '14px', marginBottom: '20px' }}>Running neural identification algorithms...</p>
+                                <div style={{ width: '100%', height: '6px', background: '#333', borderRadius: '3px' }}>
+                                  <div style={{ width: `${scanProgress}%`, height: '100%', background: '#8a2c20', borderRadius: '3px', transition: 'width 0.3s' }}></div>
+                                </div>
+                                <div style={{ color: '#8a2c20', fontSize: '12px', marginTop: '10px', fontWeight: 'bold' }}>{scanProgress}% COMPLETE</div>
+                              </div>
+                            )}
+
+                            {/* Match Popup */}
+                            {lastDetectedStudent && (
+                              <div style={{ 
+                                position: 'absolute', 
+                                bottom: '15%', 
+                                left: '50%', 
+                                transform: 'translateX(-50%)', 
+                                background: 'rgba(0,0,0,0.85)', 
+                                backdropFilter: 'blur(10px)',
+                                border: '2px solid #8a2c20',
+                                padding: '15px 35px', 
+                                borderRadius: '50px', 
+                                color: 'white', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '15px',
+                                boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+                                animation: 'slideUp 0.3s ease-out',
+                                zIndex: 3200
+                              }}>
+                                <img src={lastDetectedPhoto} style={{ width: '50px', height: '50px', borderRadius: '50%', border: '2px solid #8a2c20', objectFit: 'cover' }} alt="" />
+                                <div>
+                                  <div style={{ fontSize: '10px', color: '#8a2c20', fontWeight: 'bold', letterSpacing: '2px' }}>STUDENT_VERIFIED</div>
+                                  <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{lastDetectedStudent}</div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Detection Log Overlay */}
+                          <div style={{ position: 'absolute', bottom: '120px', left: '30px', width: '300px', background: 'rgba(0,0,0,0.6)', padding: '15px', borderRadius: '12px', color: '#00e676', fontSize: '11px', fontFamily: 'monospace', textAlign: 'left', border: '1px solid rgba(0,230,118,0.3)' }}>
+                            <div style={{ marginBottom: '8px', borderBottom: '1px solid rgba(0,230,118,0.2)', paddingBottom: '5px', fontWeight: 'bold' }}>NEURAL_ENGINE_STATUS</div>
+                            {detectionLog.map((log, i) => (
+                              <div key={i} style={{ marginBottom: '4px', opacity: 1 - (i * 0.15) }}>{log}</div>
+                            ))}
+                          </div>
+
+                          {/* Footer Controls */}
+                          <div style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)', padding: '40px', display: 'flex', justifyContent: 'center', gap: '20px', pointerEvents: 'auto' }}>
+                            <button 
+                              onClick={stopCamera}
+                              style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', padding: '15px 35px', borderRadius: '15px', fontWeight: 'bold', cursor: 'pointer', backdropFilter: 'blur(5px)' }}
+                            >
+                              Exit Scanner
+                            </button>
+                            {!groupPhoto ? (
+                                <button 
+                                  onClick={performGroupAnalysis}
+                                  disabled={isAnalyzing || !semesterFilter || !modelsLoaded}
+                                  style={{ 
+                                    background: (isAnalyzing || !semesterFilter || !modelsLoaded) ? '#555' : '#8a2c20', 
+                                    color: 'white', border: 'none', padding: '15px 50px', borderRadius: '15px', fontWeight: 'bold', cursor: 'pointer',
+                                    boxShadow: '0 5px 20px rgba(138,44,32,0.4)', transition: 'all 0.3s'
+                                  }}
+                                >
+                                  {!modelsLoaded ? 'Loading AI Engine...' : 'Capture & Analyze Group Photo'}
+                                </button>
+                            ) : (
+                                <button 
+                                  onClick={() => { setGroupPhoto(null); startCamera(); }}
+                                  style={{ background: '#3498db', color: 'white', border: 'none', padding: '15px 40px', borderRadius: '15px', fontWeight: 'bold', cursor: 'pointer' }}
+                                >
+                                  Retake Group Photo
+                                </button>
+                            )}
+                          </div>
                         </div>
 
-                        {/* Scanner Frame */}
-                        <div style={{ position: 'absolute', top: '10%', left: '10%', width: '80%', height: '80%', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '20px' }}>
-                          <div style={{ position: 'absolute', top: '-2px', left: '-2px', width: '30px', height: '30px', borderTop: '4px solid #8a2c20', borderLeft: '4px solid #8a2c20', borderTopLeftRadius: '10px' }}></div>
-                          <div style={{ position: 'absolute', top: '-2px', right: '-2px', width: '30px', height: '30px', borderTop: '4px solid #8a2c20', borderRight: '4px solid #8a2c20', borderTopRightRadius: '10px' }}></div>
-                          <div style={{ position: 'absolute', bottom: '-2px', left: '-2px', width: '30px', height: '30px', borderBottom: '4px solid #8a2c20', borderLeft: '4px solid #8a2c20', borderBottomLeftRadius: '10px' }}></div>
-                          <div style={{ position: 'absolute', bottom: '-2px', right: '-2px', width: '30px', height: '30px', borderBottom: '4px solid #8a2c20', borderRight: '4px solid #8a2c20', borderBottomRightRadius: '10px' }}></div>
+                        {/* IDENTIFICATION SIDEBAR */}
+                        <div style={{ 
+                          width: '350px', 
+                          background: 'rgba(0,0,0,0.8)', 
+                          backdropFilter: 'blur(20px)', 
+                          borderLeft: '1px solid rgba(255,255,255,0.1)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          pointerEvents: 'auto',
+                          zIndex: 3100
+                        }}>
+                          <div style={{ padding: '25px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                            <h3 style={{ color: 'white', margin: 0, fontSize: '1.2rem' }}>Identification Panel</h3>
+                            <p style={{ color: '#888', fontSize: '12px', margin: '5px 0 0 0' }}>Click on students to verify their presence in the class.</p>
+                          </div>
+                          
+                          <div style={{ flex: 1, overflowY: 'auto', padding: '15px' }} className="custom-scrollbar">
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
+                              {filteredBySemester.map(s => {
+                                const isDetected = detectedIds.includes(s.id);
+                                return (
+                                  <div 
+                                    key={s.id} 
+                                    onClick={() => isScanning && manualIdentify(s)}
+                                    style={{ 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      gap: '12px', 
+                                      background: isDetected ? 'rgba(46,125,50,0.2)' : 'rgba(255,255,255,0.05)', 
+                                      padding: '12px', 
+                                      borderRadius: '15px', 
+                                      cursor: isScanning && !isDetected ? 'pointer' : 'default',
+                                      border: isDetected ? '1px solid #2e7d32' : '1px solid rgba(255,255,255,0.05)',
+                                      transition: 'all 0.2s',
+                                      opacity: isAnalyzing ? 1 : 0.5
+                                    }}
+                                  >
+                                    <div style={{ position: 'relative' }}>
+                                      <img 
+                                        src={s.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.fullName)}&background=8a2c20&color=fff`} 
+                                        style={{ width: '45px', height: '45px', borderRadius: '12px', objectFit: 'cover' }} 
+                                        alt="" 
+                                      />
+                                      {isDetected && (
+                                        <div style={{ position: 'absolute', bottom: '-5px', right: '-5px', background: '#2e7d32', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', border: '2px solid #000' }}>
+                                          ✓
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'white' }}>{s.fullName}</div>
+                                      <div style={{ fontSize: '11px', color: '#888' }}>{s.enrollmentNumber}</div>
+                                    </div>
+                                    {!isDetected && isAnalyzing && (
+                                      <div style={{ color: '#8a2c20', fontSize: '10px', fontWeight: 'bold', border: '1px solid #8a2c20', padding: '2px 8px', borderRadius: '10px' }}>
+                                        ANALYZING...
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div style={{ padding: '20px', background: 'rgba(0,0,0,0.4)', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'white', fontSize: '13px', marginBottom: '5px' }}>
+                              <span>Identified</span>
+                              <span style={{ fontWeight: 'bold', color: '#27ae60' }}>{detectedIds.length} / {filteredBySemester.length}</span>
+                            </div>
+                            <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px' }}>
+                                <div style={{ width: `${(detectedIds.length / filteredBySemester.length) * 100}%`, height: '100%', background: '#27ae60', borderRadius: '3px', transition: 'width 0.3s' }}></div>
+                            </div>
+                          </div>
                         </div>
+                      </div>
+                    ) : (
+                      /* RESULTS VIEW OVERLAY */
+                      <div style={{ 
+                        position: 'absolute', 
+                        top: 0, left: 0, right: 0, bottom: 0, 
+                        background: 'rgba(0,0,0,0.92)', 
+                        backdropFilter: 'blur(15px)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '40px',
+                        color: 'white',
+                        zIndex: 3100
+                      }}>
+                        <div style={{ maxWidth: '1000px', width: '100%', height: '90%', display: 'flex', flexDirection: 'column' }}>
+                          <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+                            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>🎯</div>
+                            <h2 style={{ fontSize: '2.5rem', margin: '0 0 10px 0', color: '#8a2c20' }}>Attendance Scan Results</h2>
+                            <p style={{ color: '#aaa', fontSize: '1.1rem' }}>Identified <strong>{scanResultsData.present.length}</strong> students present out of {filteredBySemester.length} total.</p>
+                          </div>
 
-                        {/* Scanning Laser Animation */}
-                        {isScanning && (
-                          <div style={{ 
-                            position: 'absolute', top: '10%', left: '10%', width: '80%', height: '2px', background: '#d32f2f', boxShadow: '0 0 15px #d32f2f', opacity: 0.8,
-                            animation: 'scanLine 2s linear infinite', zIndex: 10
-                          }}></div>
-                        )}
-                        <style>{`
-                          @keyframes scanLine {
-                            0% { top: 10%; }
-                            50% { top: 90%; }
-                            100% { top: 10%; }
-                          }
-                        `}</style>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', flex: 1, overflow: 'hidden' }}>
+                            {/* Present Column */}
+                            <div style={{ background: 'rgba(46,125,50,0.1)', borderRadius: '25px', padding: '30px', display: 'flex', flexDirection: 'column', border: '1px solid rgba(46,125,50,0.3)' }}>
+                              <h3 style={{ color: '#4caf50', display: 'flex', justifyContent: 'space-between', marginBottom: '25px', fontSize: '1.4rem' }}>
+                                <span>Present Students</span>
+                                <span style={{ background: '#2e7d32', color: 'white', padding: '2px 12px', borderRadius: '12px', fontSize: '1rem' }}>{scanResultsData.present.length}</span>
+                              </h3>
+                              <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }} className="custom-scrollbar">
+                                {scanResultsData.present.map(s => (
+                                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '15px', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '15px', marginBottom: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <img src={s.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.fullName)}&background=2e7d32&color=fff`} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} alt="" />
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: '15px', fontWeight: 'bold' }}>{s.fullName}</div>
+                                      <div style={{ fontSize: '12px', color: '#888' }}>{s.enrollmentNumber}</div>
+                                    </div>
+                                    <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#2e7d32', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>✓</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
 
-                        {/* Detection Log Overlay */}
-                        <div style={{ position: 'absolute', top: '20px', right: '20px', width: '200px', background: 'rgba(0,0,0,0.6)', padding: '15px', borderRadius: '12px', color: '#00e676', fontSize: '11px', fontFamily: 'monospace', textAlign: 'left', pointerEvents: 'none', border: '1px solid rgba(0,230,118,0.3)' }}>
-                          <div style={{ marginBottom: '8px', borderBottom: '1px solid rgba(0,230,118,0.2)', paddingBottom: '5px', fontWeight: 'bold' }}>DETECTION_LOG</div>
-                          {detectionLog.map((log, i) => (
-                            <div key={i} style={{ marginBottom: '4px', opacity: 1 - (i * 0.15) }}>{log}</div>
-                          ))}
-                          {detectionLog.length === 0 && <div>IDLE_WAITING...</div>}
-                        </div>
-
-                        {/* "Match Found" Visual Alert */}
-                        {lastDetectedStudent && (
-                          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'rgba(0,0,0,0.85)', border: '2px solid #00e676', padding: '20px', borderRadius: '20px', color: 'white', fontWeight: 'bold', zIndex: 20, textAlign: 'center', minWidth: '250px', boxShadow: '0 0 30px rgba(0,230,118,0.3)' }}>
-                            <div style={{ fontSize: '10px', textTransform: 'uppercase', marginBottom: '10px', color: '#00e676', letterSpacing: '2px' }}>Identification Verified</div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', justifyContent: 'center' }}>
-                              <img 
-                                src={lastDetectedPhoto} 
-                                style={{ width: '80px', height: '80px', borderRadius: '12px', objectFit: 'cover', border: '2px solid #00e676' }} 
-                                alt="Found" 
-                              />
-                              <div style={{ textAlign: 'left' }}>
-                                <div style={{ fontSize: '1.2rem', marginBottom: '4px' }}>{lastDetectedStudent}</div>
-                                <div style={{ fontSize: '12px', color: '#00e676', opacity: 0.8 }}>DATA_MATCH_CORE_80%</div>
+                            {/* Absent Column */}
+                            <div style={{ background: 'rgba(211,47,47,0.1)', borderRadius: '25px', padding: '30px', display: 'flex', flexDirection: 'column', border: '1px solid rgba(211,47,47,0.3)' }}>
+                              <h3 style={{ color: '#f44336', display: 'flex', justifyContent: 'space-between', marginBottom: '25px', fontSize: '1.4rem' }}>
+                                <span>Absent Students</span>
+                                <span style={{ background: '#c62828', color: 'white', padding: '2px 12px', borderRadius: '12px', fontSize: '1rem' }}>{scanResultsData.absent.length}</span>
+                              </h3>
+                              <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }} className="custom-scrollbar">
+                                {scanResultsData.absent.map(s => (
+                                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '15px', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '15px', marginBottom: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <img src={s.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.fullName)}&background=c62828&color=fff`} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} alt="" />
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: '15px', fontWeight: 'bold' }}>{s.fullName}</div>
+                                      <div style={{ fontSize: '12px', color: '#888' }}>{s.enrollmentNumber}</div>
+                                    </div>
+                                    <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#c62828', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>✗</div>
+                                  </div>
+                                ))}
+                                {scanResultsData.absent.length === 0 && (
+                                  <div style={{ textAlign: 'center', color: '#666', marginTop: '40px', fontStyle: 'italic' }}>
+                                    Perfect Attendance! No absences detected.
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
-                        )}
 
-                        {/* Processing Status */}
-                        {isScanning && (
-                          <div style={{ position: 'absolute', bottom: '20%', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.7)', color: 'white', padding: '10px 20px', borderRadius: '30px', backdropFilter: 'blur(5px)' }}>
-                            <div style={{ fontSize: '12px', marginBottom: '5px', color: '#00e676' }}>VERIFYING_FACIAL_PROFILES... {scanProgress}%</div>
-                            <div style={{ width: '150px', height: '4px', background: '#333', borderRadius: '2px' }}>
-                              <div style={{ width: `${scanProgress}%`, height: '100%', background: '#00e676', transition: 'width 0.1s' }}></div>
-                            </div>
+                          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '40px' }}>
+                            <button 
+                              onClick={() => {
+                                setShowScanResults(false);
+                                setScanProgress(0);
+                                setGroupPhoto(null);
+                                setDetectedIds([]);
+                                startCamera();
+                              }}
+                              style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', padding: '15px 40px', borderRadius: '15px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1.1rem' }}
+                            >
+                              Discard & Re-scan
+                            </button>
+                            <button 
+                              onClick={async () => {
+                                const isSaved = await handleSaveAttendance();
+                                if (isSaved) {
+                                  setShowScanResults(false);
+                                  stopCamera();
+                                  setMarkingMode('manual');
+                                }
+                              }}
+                              style={{ background: '#8a2c20', color: 'white', border: 'none', padding: '15px 60px', borderRadius: '15px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1.1rem', boxShadow: '0 10px 30px rgba(138,44,32,0.4)' }}
+                            >
+                              Confirm & Save to Database
+                            </button>
                           </div>
-                        )}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '30px' }}>
-                      <button 
-                        onClick={stopCamera}
-                        style={{ background: '#eee', color: '#333', border: 'none', padding: '12px 30px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}
-                      >
-                        Cancel
-                      </button>
-                      <button 
-                        onClick={performScan}
-                        disabled={isScanning || !semesterFilter}
-                        style={{ 
-                          background: (isScanning || !semesterFilter) ? '#ccc' : '#8a2c20', 
-                          color: 'white', border: 'none', padding: '12px 40px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer',
-                          transition: 'all 0.3s'
-                        }}
-                      >
-                        {isScanning ? 'Processing...' : 'Start Group Detection'}
-                      </button>
-                    </div>
-                    {!semesterFilter && <p style={{ color: '#c62828', fontSize: '13px', marginTop: '10px' }}>* Please select a semester first</p>}
+                    <style>{`
+                      @keyframes scanLineFull {
+                        0% { top: 10%; opacity: 0.8; }
+                        50% { top: 90%; opacity: 1; }
+                        100% { top: 10%; opacity: 0.8; }
+                      }
+                      @keyframes slideUp {
+                        from { transform: translate(-50%, 20px); opacity: 0; }
+                        to { transform: translate(-50%, 0); opacity: 1; }
+                      }
+                      .custom-scrollbar::-webkit-scrollbar {
+                        width: 6px;
+                      }
+                      .custom-scrollbar::-webkit-scrollbar-track {
+                        background: rgba(255,255,255,0.05);
+                        border-radius: 10px;
+                      }
+                      .custom-scrollbar::-webkit-scrollbar-thumb {
+                        background: rgba(255,255,255,0.2);
+                        border-radius: 10px;
+                      }
+                    `}</style>
                   </div>
                 )}
               </div>
@@ -976,24 +1602,41 @@ function TeacherProfile() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h3 style={{ color: '#8a2c20', borderBottom: '1px solid #eee', paddingBottom: '10px', margin: 0 }}>Previous Attendance Records</h3>
-              <select 
-                value={historySemesterFilter} 
-                onChange={(e) => setHistorySemesterFilter(e.target.value)}
-                style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
-              >
-                <option value="">Select Semester</option>
-                <option value="All">All Semesters</option>
-                <option value="1st Semester">1st Semester</option>
-                <option value="2nd Semester">2nd Semester</option>
-                <option value="3rd Semester">3rd Semester</option>
-                <option value="4th Semester">4th Semester</option>
-                <option value="5th Semester">5th Semester</option>
-                <option value="6th Semester">6th Semester</option>
-                <option value="7th Semester">7th Semester</option>
-                <option value="8th Semester">8th Semester</option>
-                <option value="9th Semester">9th Semester</option>
-                <option value="10th Semester">10th Semester</option>
-              </select>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <select 
+                  value={historySemesterFilter} 
+                  onChange={(e) => setHistorySemesterFilter(e.target.value)}
+                  style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
+                >
+                  <option value="">Select Semester</option>
+                  <option value="All">All Semesters</option>
+                  <option value="1st Semester">1st Semester</option>
+                  <option value="2nd Semester">2nd Semester</option>
+                  <option value="3rd Semester">3rd Semester</option>
+                  <option value="4th Semester">4th Semester</option>
+                  <option value="5th Semester">5th Semester</option>
+                  <option value="6th Semester">6th Semester</option>
+                  <option value="7th Semester">7th Semester</option>
+                  <option value="8th Semester">8th Semester</option>
+                  <option value="9th Semester">9th Semester</option>
+                  <option value="10th Semester">10th Semester</option>
+                </select>
+                {historySemesterFilter && historySemesterFilter !== 'All' && attendanceRecords.filter(r => r.semester === historySemesterFilter).length > 0 && (
+                  <button 
+                    onClick={() => {
+                      const semStudents = students.filter(s => {
+                        const semNum = historySemesterFilter.split(' ')[0].replace(/[^0-9]/g, '');
+                        return String(s.semester) === semNum || String(s.semester) === historySemesterFilter;
+                      });
+                      const semRecords = attendanceRecords.filter(r => r.semester === historySemesterFilter).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+                      api.attendance.generateClassPDF(semStudents, semRecords, teacher.primarySubject, historySemesterFilter);
+                    }}
+                    style={{ background: '#27ae60', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    📥 Download Report
+                  </button>
+                )}
+              </div>
             </div>
             
             {(() => {
@@ -1032,44 +1675,59 @@ function TeacherProfile() {
                     </tr>
                   </thead>
                   <tbody>
-                    {teacherHistory.map(record => (
-                      <tr key={record.id} style={{ borderBottom: '1px solid #eee' }}>
-                        <td style={tdStyle}>{record.dateDisplay}</td>
-                        <td style={tdStyle}>
-                          {record.proofPhoto ? (
-                            <img 
-                              src={record.proofPhoto} 
-                              alt="Proof" 
-                              style={{ width: '45px', height: '30px', borderRadius: '4px', objectFit: 'cover', border: '1px solid #eee', cursor: 'pointer' }}
+                    {isLoadingHistory ? (
+                      Array(5).fill(0).map((_, i) => (
+                        <tr key={`skel-hist-${i}`} style={{ borderBottom: '1px solid #eee' }}>
+                          <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
+                          <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '45px', height: '30px' }}></div></td>
+                          <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                          <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                          <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
+                          <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                          <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '60px' }}></div></td>
+                          <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                        </tr>
+                      ))
+                    ) : (
+                      teacherHistory.map(record => (
+                        <tr key={record.id} style={{ borderBottom: '1px solid #eee' }}>
+                          <td style={tdStyle}>{record.dateDisplay}</td>
+                          <td style={tdStyle}>
+                            {record.proofPhoto ? (
+                              <img 
+                                src={record.proofPhoto} 
+                                alt="Proof" 
+                                style={{ width: '45px', height: '30px', borderRadius: '4px', objectFit: 'cover', border: '1px solid #eee', cursor: 'pointer' }}
+                                onClick={() => setSelectedHistory(record)}
+                              />
+                            ) : (
+                              <span style={{ color: '#ccc', fontSize: '11px' }}>N/A</span>
+                            )}
+                          </td>
+                          <td style={tdStyle}>{record.semester}</td>
+                          <td style={tdStyle}>{record.subject}</td>
+                          <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', background: '#f5f5f5', fontSize: '12px', fontWeight: 'bold' }}>{record.session || 'Lecture 1'}</span></td>
+                          <td style={tdStyle}>{Object.keys(record.attendance).length} Students</td>
+                          <td style={tdStyle}>
+                            <span style={{ color: '#27ae60', fontWeight: 'bold' }}>✓ Saved</span>
+                          </td>
+                          <td style={tdStyle}>
+                           <button 
                               onClick={() => setSelectedHistory(record)}
-                            />
-                          ) : (
-                            <span style={{ color: '#ccc', fontSize: '11px' }}>N/A</span>
-                          )}
-                        </td>
-                        <td style={tdStyle}>{record.semester}</td>
-                        <td style={tdStyle}>{record.subject}</td>
-                        <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', background: '#f5f5f5', fontSize: '12px', fontWeight: 'bold' }}>{record.session || 'Lecture 1'}</span></td>
-                        <td style={tdStyle}>{Object.keys(record.attendance).length} Students</td>
-                        <td style={tdStyle}>
-                          <span style={{ color: '#27ae60', fontWeight: 'bold' }}>✓ Saved</span>
-                        </td>
-                        <td style={tdStyle}>
-                         <button 
-                            onClick={() => setSelectedHistory(record)}
-                            style={{ background: '#3498db', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
-                          >
-                            View
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteRequest(record)}
-                            style={{ background: '#c62828', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                              style={{ background: '#3498db', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                            >
+                              View
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteRequest(record)}
+                              style={{ background: '#c62828', color: 'white', border: 'none', padding: '5px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               );
