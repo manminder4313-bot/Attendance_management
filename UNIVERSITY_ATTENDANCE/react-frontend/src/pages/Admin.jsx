@@ -10,10 +10,11 @@ function Admin() {
   const [studentSubmissions, setStudentSubmissions] = useState([]);
   const [departmentSubmissions, setDepartmentSubmissions] = useState([]);
   const [adminSubmissions, setAdminSubmissions] = useState([]);
-  const [activeTab, setActiveTab] = useState('teachers');
+  const [activeTab, setActiveTab] = useState('students');
   const [departmentFilter, setDepartmentFilter] = useState('All');
-  const [courseFilter, setCourseFilter] = useState('All');
-  const [semesterFilter, setSemesterFilter] = useState('All');
+  const [studentDeptFilter, setStudentDeptFilter] = useState('');
+  const [courseFilter, setCourseFilter] = useState('');
+  const [semesterFilter, setSemesterFilter] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
   const [isDeleteMode, setIsDeleteMode] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState([]);
@@ -67,13 +68,13 @@ function Admin() {
 
   const handleShare = (user, role) => {
     const text = `*University Portal Credentials*\n\n` +
-                 `*Name:* ${user.fullName || user.headName || user.department}\n` +
-                 `*Role:* ${role.charAt(0).toUpperCase() + role.slice(1)}\n` +
-                 `*User ID:* ${user.username}\n` +
-                 `*Password:* ${user.password}\n\n` +
-                 `Login at: ${window.location.origin}/login\n\n` +
-                 `Please keep these details secure.`;
-    
+      `*Name:* ${user.fullName || user.headName || user.department}\n` +
+      `*Role:* ${role.charAt(0).toUpperCase() + role.slice(1)}\n` +
+      `*User ID:* ${user.username}\n` +
+      `*Password:* ${user.password}\n\n` +
+      `Login at: ${window.location.origin}/login\n\n` +
+      `Please keep these details secure.`;
+
     if (navigator.share) {
       navigator.share({
         title: 'Portal Credentials',
@@ -100,7 +101,7 @@ function Admin() {
     try {
       const data = type === 'teacher' ? selectedTeacher : selectedStudent;
       const updatedData = { ...data, ...editFormData };
-      
+
       // If it's a student and enrollment number changed, update username too
       if (type === 'student' && editFormData.enrollmentNumber) {
         updatedData.username = editFormData.enrollmentNumber;
@@ -125,15 +126,15 @@ function Admin() {
   };
   const normalizeSemesters = async () => {
     if (!window.confirm("This will automatically recalculate semesters AND reset all passwords to 'Mrsptu@12345' for ALL students and teachers. Continue?")) return;
-    
+
     try {
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth();
       const DEFAULT_PWD = "Mrsptu@12345";
-      
+
       console.log(`🚀 Starting Normalization... Current Date: ${now.toLocaleDateString()}`);
-      
+
       let studentUpdates = 0;
       let teacherUpdates = 0;
 
@@ -163,12 +164,12 @@ function Admin() {
 
           const newSem = semester.toString();
           const newUsername = s.enrollmentNumber || s.username;
-          
+
           if (s.semester !== newSem || s.username !== newUsername || s.password !== DEFAULT_PWD) {
             const updated = { ...s, semester: newSem, username: newUsername, password: DEFAULT_PWD };
             const id = s._id || s.id;
             if (!id) return s;
-            
+
             await api.students.update(id, updated);
             studentUpdates++;
             return { ...updated, id };
@@ -200,12 +201,12 @@ function Admin() {
       }));
 
       console.log(`✅ Normalization Finished: ${studentUpdates} Students updated, ${teacherUpdates} Teachers updated.`);
-      
+
       setStudentSubmissions(updatedStudents);
       setSubmissions(updatedTeachers);
-      
+
       alert(`Success!\n\n- ${studentUpdates} Students normalized\n- ${teacherUpdates} Teachers normalized\n\nAll records now use 'Mrsptu@12345' as password.`);
-      
+
       loadSubmissions();
     } catch (err) {
       console.error("Normalization CRASHED:", err);
@@ -224,10 +225,15 @@ function Admin() {
     }
     // Handle tab visibility for Master Admin vs Department
     if (isAdminLoggedIn && activeTab === 'attendance_stats') {
-      setActiveTab('teachers');
+      setActiveTab('students');
     }
+    // Autofill student department filter for HOD
+    if (isDepartmentLoggedIn && roleDepartmentData?.department && !studentDeptFilter) {
+      setStudentDeptFilter(roleDepartmentData.department);
+    }
+
     loadSubmissions();
-  }, [navigate, isAdminLoggedIn, isDepartmentLoggedIn, activeTab]);
+  }, [navigate, isAdminLoggedIn, isDepartmentLoggedIn, activeTab, studentDeptFilter, roleDepartmentData]);
 
   async function loadSubmissions() {
     setIsLoading(true);
@@ -249,7 +255,7 @@ function Admin() {
         id: r._id || r.id,
         dateDisplay: r.date ? new Date(r.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'
       })));
-      
+
       console.log(`📊 Data Loaded: ${teachers.length} Teachers, ${students.length} Students, ${depts.length} Departments`);
     } catch (err) {
       console.error('Error loading data from MongoDB:', err);
@@ -412,7 +418,7 @@ function Admin() {
     if (window.confirm(`Are you sure you want to delete ${selectedIds.length} selected records? This cannot be undone.`)) {
       try {
         console.log(`🗑️ Deleting ${selectedIds.length} items from ${activeTab}... IDs:`, selectedIds);
-        
+
         let successCount = 0;
         let failCount = 0;
 
@@ -431,7 +437,7 @@ function Admin() {
         }));
 
         alert(`Deletion complete!\n- Success: ${successCount}\n- Failed: ${failCount}`);
-        
+
         // Final cleanup
         setSelectedIds([]);
         setIsDeleteMode(false);
@@ -449,18 +455,18 @@ function Admin() {
   const baseStudents = isDepartmentLoggedIn && roleDepartmentData ? studentSubmissions.filter(s => api.departments.getCourses(roleDepartmentData.department).includes(s.course)) : studentSubmissions;
 
   const filteredTeachers = baseTeachers.filter(t => departmentFilter === 'All' || t.department === departmentFilter);
-  const filteredStudents = baseStudents.filter(s => 
-    (courseFilter === 'All' || s.course === courseFilter) && 
-    (semesterFilter === 'All' || s.semester === semesterFilter || String(s.semester) === semesterFilter.split(' ')[0])
+  const filteredStudents = baseStudents.filter(s =>
+    (isDepartmentLoggedIn || !studentDeptFilter || s.department === studentDeptFilter) &&
+    (s.course === courseFilter) &&
+    (s.semester === semesterFilter || String(s.semester) === semesterFilter.split(' ')[0])
   )
     .sort((a, b) => (a.enrollmentNumber || '').localeCompare(b.enrollmentNumber || '', undefined, { numeric: true }));
 
   const handleSelectAll = (e) => {
-    const currentData = activeTab === 'teachers' ? filteredTeachers 
-      : activeTab === 'students' ? filteredStudents 
-      : activeTab === 'departments' ? departmentSubmissions 
-      : activeTab === 'attendance_history' ? attendanceRecords
-      : adminSubmissions;
+    const currentData = activeTab === 'teachers' ? filteredTeachers
+      : activeTab === 'students' ? filteredStudents
+        : activeTab === 'departments' ? departmentSubmissions
+          : adminSubmissions;
 
     if (e.target.checked) {
       if (activeTab === 'admins') {
@@ -588,11 +594,6 @@ function Admin() {
               Attendance Stats
             </button>
           )}
-          <button
-            onClick={() => { setActiveTab('attendance_history'); setSelectedIds([]); setIsDeleteMode(false); }}
-            style={{ padding: '10px 20px', border: 'none', background: 'none', borderBottom: activeTab === 'attendance_history' ? '3px solid var(--primary)' : 'none', color: activeTab === 'attendance_history' ? 'var(--primary)' : '#666', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>
-            Attendance History
-          </button>
         </div>
 
         <div className="admin-filters">
@@ -611,14 +612,26 @@ function Admin() {
             )
           ) : activeTab === 'students' ? (
             <div style={{ display: 'flex', gap: '10px' }}>
+              {isDepartmentLoggedIn ? (
+                <select value={roleDepartmentData?.department} disabled style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none', background: '#f5f5f5', color: '#666' }}>
+                  <option>{roleDepartmentData?.department}</option>
+                </select>
+              ) : (
+                <select value={studentDeptFilter} onChange={(e) => { setStudentDeptFilter(e.target.value); setCourseFilter(''); setSelectedIds([]); }} style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }}>
+                  <option value="">Select Department</option>
+                  {departments.map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
+              )}
               <select value={courseFilter} onChange={(e) => { setCourseFilter(e.target.value); setSelectedIds([]); }} style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }}>
-                <option value="All">All Courses</option>
-                {(isDepartmentLoggedIn ? api.departments.getCourses(roleDepartmentData?.department) : [
-                  'BSE. Graphic', 'B.Tech Mechanical', 'B.Tech Civil', 'B.Tech Electrical', 'BCA', 'MCA', 'B.A in Computer science'
-                ]).map(c => <option key={c} value={c}>{c}</option>)}
+                <option value="">Select Course</option>
+                {api.departments.getCourses(isDepartmentLoggedIn ? roleDepartmentData?.department : studentDeptFilter).map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
               </select>
               <select value={semesterFilter} onChange={(e) => { setSemesterFilter(e.target.value); setSelectedIds([]); }} style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }}>
-                <option value="All">All Semesters</option>
+                <option value="">Select Semester</option>
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
                   <option key={n} value={`${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester`}>
                     {n}{n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester
@@ -638,12 +651,19 @@ function Admin() {
       </div>
 
       <div style={{ background: 'var(--white)', borderRadius: '12px', boxShadow: '0 5px 20px rgba(0,0,0,0.05)', overflowX: 'auto' }}>
-        {((activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? departmentSubmissions : adminSubmissions).length === 0 && !isLoading) ? (
-          <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-light)', fontStyle: 'italic' }}>
-            No {activeTab} submissions found.
+        {activeTab === 'students' && ((!isDepartmentLoggedIn && !studentDeptFilter) || !courseFilter || !semesterFilter) ? (
+          <div style={{ textAlign: 'center', padding: '80px 40px', background: '#fff', borderRadius: '15px' }}>
+            <div style={{ fontSize: '50px', marginBottom: '20px' }}>📋</div>
+            <h3 style={{ color: '#333', margin: '0 0 10px 0' }}>Data Selection Required</h3>
+            <p style={{ color: '#666', margin: 0 }}>Please select {!isDepartmentLoggedIn && !studentDeptFilter ? 'a Department, ' : ''}a <strong>Course</strong> and <strong>Semester</strong> to view the student list.</p>
           </div>
+        ) : (
+          ((activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? departmentSubmissions : adminSubmissions).length === 0 && !isLoading) ? (
+            <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-light)', fontStyle: 'italic' }}>
+              No {activeTab} submissions found.
+            </div>
           ) : (
-            activeTab === 'students' ? (
+          activeTab === 'students' ? (
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr>
@@ -655,8 +675,6 @@ function Admin() {
                   <th style={thStyle}>Course</th>
                   <th style={thStyle}>Batch</th>
                   <th style={thStyle}>Roll No</th>
-                  <th style={thStyle}>Attendance %</th>
-                  <th style={thStyle}>Enrolled Face</th>
                   <th style={thStyle}>Details</th>
                 </tr>
               </thead>
@@ -672,8 +690,6 @@ function Admin() {
                       <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
                       <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '60px' }}></div></td>
                       <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
                       <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
                     </tr>
                   ))
@@ -704,24 +720,6 @@ function Admin() {
                       <td style={tdStyle}>{s.batchYear}</td>
                       <td style={tdStyle}>{s.enrollmentNumber}</td>
                       <td style={tdStyle}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div style={{ width: '60px', height: '6px', background: '#eee', borderRadius: '3px', overflow: 'hidden' }}>
-                            <div style={{ width: `${api.attendance.getStats(attendanceRecords, s.id).percentage}%`, height: '100%', background: api.attendance.getStats(attendanceRecords, s.id).percentage >= 75 ? '#27ae60' : '#e74c3c' }}></div>
-                          </div>
-                          <span style={{ fontWeight: 'bold', color: api.attendance.getStats(attendanceRecords, s.id).percentage >= 60 ? '#27ae60' : '#e74c3c' }}>
-                            {api.attendance.getStats(attendanceRecords, s.id).percentage}%
-                          </span>
-                        </div>
-                      </td>
-
-                      <td style={tdStyle}>
-                        {s.enrolledFace ? (
-                          <img src={s.enrolledFace} alt="Enrolled" className="profile-thumb" style={{ border: '2px solid #27ae60' }} />
-                        ) : (
-                          <div className="profile-thumb" style={{ background: '#fff3f3', border: '1px dashed #e74c3c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#e74c3c' }}>Missing</div>
-                        )}
-                      </td>
-                      <td style={tdStyle}>
                         <button onClick={() => viewStudentDetails(s)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
                       </td>
                     </tr>
@@ -729,389 +727,357 @@ function Admin() {
                 )}
               </tbody>
             </table>
-        ) : (
-          activeTab === 'teachers' ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr>
-                  {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={filteredTeachers.length > 0 && selectedIds.length === filteredTeachers.length} /></th>}
-                  <th style={thStyle}>Photo</th>
-                  <th style={thStyle}>Date</th>
-                  <th style={thStyle}>Full Name</th>
-                  <th style={thStyle}>Email</th>
-                  <th style={thStyle}>Phone</th>
-                  <th style={thStyle}>Subject</th>
-                  <th style={thStyle}>Exp. (Yrs)</th>
-                  <th style={thStyle}>Department</th>
-                  <th style={thStyle}>Details</th>
+          ) : (
+            activeTab === 'teachers' ? (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr>
+                    {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={filteredTeachers.length > 0 && selectedIds.length === filteredTeachers.length} /></th>}
+                    <th style={thStyle}>Photo</th>
+                    <th style={thStyle}>Date</th>
+                    <th style={thStyle}>Full Name</th>
+                    <th style={thStyle}>Email</th>
+                    <th style={thStyle}>Phone</th>
+                    <th style={thStyle}>Subject</th>
+                    <th style={thStyle}>Exp. (Yrs)</th>
+                    <th style={thStyle}>Department</th>
+                    <th style={thStyle}>Details</th>
 
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  Array(5).fill(0).map((_, i) => (
-                    <tr key={`skel-teacher-${i}`} style={{ borderBottom: '1px solid #eee' }}>
-                      {isDeleteMode && <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '20px' }}></div></td>}
-                      <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '150px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '200px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '60px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
-                    </tr>
-                  ))
-                ) : (
-                  filteredTeachers.map((t) => (
-                    <tr key={t.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(t.id) ? '#f0f8ff' : 'transparent' }}>
-                      {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(t.id)} onChange={() => handleSelect(t.id)} /></td>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoading ? (
+                    Array(5).fill(0).map((_, i) => (
+                      <tr key={`skel-teacher-${i}`} style={{ borderBottom: '1px solid #eee' }}>
+                        {isDeleteMode && <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '20px' }}></div></td>}
+                        <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '150px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '200px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '60px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
+                      </tr>
+                    ))
+                  ) : (
+                    filteredTeachers.map((t) => (
+                      <tr key={t.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(t.id) ? '#f0f8ff' : 'transparent' }}>
+                        {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(t.id)} onChange={() => handleSelect(t.id)} /></td>}
+                        <td style={tdStyle}>
+                          <div style={{ position: 'relative', display: 'inline-block' }}>
+                            {t.profilePhoto ? (
+                              <img src={t.profilePhoto} alt="Profile" className="profile-thumb" />
+                            ) : (
+                              <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{t.fullName?.charAt(0).toUpperCase()}</div>
+                            )}
+                            <div
+                              onClick={() => triggerMemberPhotoEdit(t.id, 'teacher')}
+                              style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
+                            >
+                              📷
+                            </div>
+                          </div>
+                        </td>
+                        <td style={tdStyle}>{t.createdAt ? new Date(t.createdAt).toLocaleString() : (t.submissionDate || 'N/A')}</td>
+                        <td style={{ ...tdStyle, fontWeight: 600 }}>{t.fullName}</td>
+                        <td style={tdStyle}>{t.email}</td>
+                        <td style={tdStyle}>{t.phone}</td>
+                        <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{t.primarySubject}</span></td>
+                        <td style={tdStyle}>{t.experience || '0'}</td>
+                        <td style={tdStyle}>{t.department || 'N/A'}</td>
+                        <td style={tdStyle}>
+                          <button onClick={() => viewDetails(t)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            ) : activeTab === 'departments' ? (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr>
+                    {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={departmentSubmissions.length > 0 && selectedIds.length === departmentSubmissions.length} /></th>}
+                    <th style={thStyle}>Date</th>
+                    <th style={thStyle}>Photo</th>
+                    <th style={thStyle}>Head Name</th>
+                    <th style={thStyle}>Email</th>
+                    <th style={thStyle}>Phone</th>
+                    <th style={thStyle}>Department</th>
+                    <th style={thStyle}>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoading ? (
+                    Array(5).fill(0).map((_, i) => (
+                      <tr key={`skel-dept-${i}`} style={{ borderBottom: '1px solid #eee' }}>
+                        {isDeleteMode && <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '20px' }}></div></td>}
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '150px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '180px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
+                      </tr>
+                    ))
+                  ) : (
+                    departmentSubmissions.map((d) => (
+                      <tr key={d.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(d.id) ? '#f0f8ff' : 'transparent' }}>
+                        {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(d.id)} onChange={() => handleSelect(d.id)} /></td>}
+                        <td style={tdStyle}>{d.createdAt ? new Date(d.createdAt).toLocaleString() : (d.submissionDate || 'N/A')}</td>
+                        <td style={tdStyle}>
+                          <div style={{ position: 'relative', display: 'inline-block' }}>
+                            {d.profilePhoto ? (
+                              <img src={d.profilePhoto} alt="Profile" className="profile-thumb" />
+                            ) : (
+                              <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{d.headName?.charAt(0).toUpperCase()}</div>
+                            )}
+                            <div
+                              onClick={() => triggerMemberPhotoEdit(d.id, 'department')}
+                              style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
+                            >
+                              📷
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ ...tdStyle, fontWeight: 600 }}>{d.headName}</td>
+                        <td style={tdStyle}>{d.email}</td>
+                        <td style={tdStyle}>{d.phone}</td>
+                        <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{d.department}</span></td>
+                        <td style={tdStyle}>
+                          <button onClick={() => viewDeptDetails(d)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            ) : activeTab === 'admins' ? (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr>
+                    {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={adminSubmissions.length > 0 && selectedIds.length === adminSubmissions.length} /></th>}
+                    <th style={thStyle}>Photo</th>
+                    <th style={thStyle}>Date</th>
+                    <th style={thStyle}>Full Name</th>
+                    <th style={thStyle}>Email</th>
+                    <th style={thStyle}>Phone</th>
+                    <th style={thStyle}>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminSubmissions.map((a) => (
+                    <tr key={a._id || a.username} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(a._id || a.uuid || a.username) ? '#f0f8ff' : 'transparent' }}>
+                      {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(a._id || a.uuid || a.username)} onChange={() => handleSelect(a._id || a.uuid || a.username)} disabled={a.username === 'Adminmanminder'} /></td>}
                       <td style={tdStyle}>
                         <div style={{ position: 'relative', display: 'inline-block' }}>
-                          {t.profilePhoto ? (
-                            <img src={t.profilePhoto} alt="Profile" className="profile-thumb" />
+                          {a.profilePhoto ? (
+                            <img src={a.profilePhoto} alt="Profile" className="profile-thumb" />
                           ) : (
-                            <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{t.fullName?.charAt(0).toUpperCase()}</div>
+                            <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{a.fullName ? a.fullName.charAt(0).toUpperCase() : 'A'}</div>
                           )}
-                          <div
-                            onClick={() => triggerMemberPhotoEdit(t.id, 'teacher')}
-                            style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
-                          >
-                            📷
-                          </div>
                         </div>
                       </td>
-                      <td style={tdStyle}>{t.createdAt ? new Date(t.createdAt).toLocaleString() : (t.submissionDate || 'N/A')}</td>
-                      <td style={{ ...tdStyle, fontWeight: 600 }}>{t.fullName}</td>
-                      <td style={tdStyle}>{t.email}</td>
-                      <td style={tdStyle}>{t.phone}</td>
-                      <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{t.primarySubject}</span></td>
-                      <td style={tdStyle}>{t.experience || '0'}</td>
-                      <td style={tdStyle}>{t.department || 'N/A'}</td>
+                      <td style={tdStyle}>{a.createdAt ? new Date(a.createdAt).toLocaleString() : (a.submissionDate || 'N/A')}</td>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{a.fullName || 'Admin User'}</td>
+                      <td style={tdStyle}>{a.email}</td>
+                      <td style={tdStyle}>{a.contact}</td>
                       <td style={tdStyle}>
-                        <button onClick={() => viewDetails(t)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
+                        <button onClick={() => viewAdminDetails(a)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          ) : activeTab === 'departments' ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr>
-                  {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={departmentSubmissions.length > 0 && selectedIds.length === departmentSubmissions.length} /></th>}
-                  <th style={thStyle}>Date</th>
-                  <th style={thStyle}>Photo</th>
-                  <th style={thStyle}>Head Name</th>
-                  <th style={thStyle}>Email</th>
-                  <th style={thStyle}>Phone</th>
-                  <th style={thStyle}>Department</th>
-                  <th style={thStyle}>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  Array(5).fill(0).map((_, i) => (
-                    <tr key={`skel-dept-${i}`} style={{ borderBottom: '1px solid #eee' }}>
-                      {isDeleteMode && <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '20px' }}></div></td>}
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '150px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '180px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
-                      <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
-                    </tr>
-                  ))
-                ) : (
-                  departmentSubmissions.map((d) => (
-                    <tr key={d.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(d.id) ? '#f0f8ff' : 'transparent' }}>
-                      {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(d.id)} onChange={() => handleSelect(d.id)} /></td>}
-                      <td style={tdStyle}>{d.createdAt ? new Date(d.createdAt).toLocaleString() : (d.submissionDate || 'N/A')}</td>
-                      <td style={tdStyle}>
-                         <div style={{ position: 'relative', display: 'inline-block' }}>
-                           {d.profilePhoto ? (
-                             <img src={d.profilePhoto} alt="Profile" className="profile-thumb" />
-                           ) : (
-                             <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{d.headName?.charAt(0).toUpperCase()}</div>
-                           )}
-                           <div
-                             onClick={() => triggerMemberPhotoEdit(d.id, 'department')}
-                             style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer', border: '1px solid white' }}
-                           >
-                             📷
-                           </div>
-                         </div>
-                       </td>
-                      <td style={{ ...tdStyle, fontWeight: 600 }}>{d.headName}</td>
-                      <td style={tdStyle}>{d.email}</td>
-                      <td style={tdStyle}>{d.phone}</td>
-                      <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{d.department}</span></td>
-                      <td style={tdStyle}>
-                        <button onClick={() => viewDeptDetails(d)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          ) : activeTab === 'admins' ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr>
-                  {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={adminSubmissions.length > 0 && selectedIds.length === adminSubmissions.length} /></th>}
-                  <th style={thStyle}>Photo</th>
-                  <th style={thStyle}>Date</th>
-                  <th style={thStyle}>Full Name</th>
-                  <th style={thStyle}>Email</th>
-                  <th style={thStyle}>Phone</th>
-                  <th style={thStyle}>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {adminSubmissions.map((a) => (
-                  <tr key={a._id || a.username} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(a._id || a.uuid || a.username) ? '#f0f8ff' : 'transparent' }}>
-                    {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(a._id || a.uuid || a.username)} onChange={() => handleSelect(a._id || a.uuid || a.username)} disabled={a.username === 'Adminmanminder'} /></td>}
-                    <td style={tdStyle}>
-                      <div style={{ position: 'relative', display: 'inline-block' }}>
-                        {a.profilePhoto ? (
-                          <img src={a.profilePhoto} alt="Profile" className="profile-thumb" />
-                        ) : (
-                          <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{a.fullName ? a.fullName.charAt(0).toUpperCase() : 'A'}</div>
-                        )}
-                      </div>
-                    </td>
-                    <td style={tdStyle}>{a.createdAt ? new Date(a.createdAt).toLocaleString() : (a.submissionDate || 'N/A')}</td>
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>{a.fullName || 'Admin User'}</td>
-                    <td style={tdStyle}>{a.email}</td>
-                    <td style={tdStyle}>{a.contact}</td>
-                    <td style={tdStyle}>
-                      <button onClick={() => viewAdminDetails(a)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : activeTab === 'attendance_stats' ? (
-            <div style={{ padding: '30px' }}>
-              {/* Filter Selection Panel */}
-              <div style={{ background: '#f8f9fa', padding: '25px', borderRadius: '15px', marginBottom: '30px', display: 'flex', gap: '20px', alignItems: 'center', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '8px', color: 'var(--primary)', fontWeight: 'bold', fontSize: '14px' }}>Select Course</label>
-                  <select
-                    value={statsCourseFilter}
-                    onChange={(e) => setStatsCourseFilter(e.target.value)}
-                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none', background: 'white' }}
-                  >
-                    <option value="">-- Choose Course --</option>
-                    {(isDepartmentLoggedIn ? api.departments.getCourses(roleDepartmentData?.department) : [
-                      'BSE. Graphic', 'B.Tech Mechanical', 'B.Tech Civil', 'B.Tech Electrical', 'BCA', 'MCA', 'Arts of Computer'
-                    ]).map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '8px', color: 'var(--primary)', fontWeight: 'bold', fontSize: '14px' }}>Select Semester</label>
-                  <select
-                    value={statsSemesterFilter}
-                    onChange={(e) => setStatsSemesterFilter(e.target.value)}
-                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none', background: 'white' }}
-                  >
-                    <option value="">-- Choose Semester --</option>
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => {
-                      const name = `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester`;
-                      return <option key={name} value={name}>{name}</option>
-                    })}
-                    {[1, 2, 3, 4,].map(n => {
-                      const name = `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Year`;
-                      return <option key={name} value={name}>{name}</option>
-                    })}
-                  </select>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: '8px', color: 'var(--primary)', fontWeight: 'bold', fontSize: '14px' }}>Select Subject</label>
-                  <select
-                    value={statsSubjectFilter}
-                    onChange={(e) => setStatsSubjectFilter(e.target.value)}
-                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none', background: 'white' }}
-                  >
-                    <option value="All">All Subjects</option>
-                    {Array.from(new Set(attendanceRecords
-                      .filter(r => r.course === statsCourseFilter && r.semester === statsSemesterFilter)
-                      .map(r => r.subject)
-                      .filter(Boolean)
-                    )).sort().map(sub => (
-                      <option key={sub} value={sub}>{sub}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {!statsCourseFilter || !statsSemesterFilter ? (
-                <div style={{ textAlign: 'center', padding: '100px 20px', color: '#999', background: 'white', borderRadius: '15px', border: '2px dashed #eee' }}>
-                  <div style={{ fontSize: '50px', marginBottom: '20px' }}>📊</div>
-                  <h3 style={{ margin: 0, color: '#666' }}>Ready to analyze attendance data?</h3>
-                  <p style={{ margin: '10px 0 0 0' }}>Please select a <strong>Course</strong> and <strong>Semester</strong> above to generate the report.</p>
-                </div>
-              ) : (
-                <>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '30px' }}>
-                    {(() => {
-                      const semesterName = statsSemesterFilter;
-
-                      // Filter records for this semester, department, COURSE, and SUBJECT
-                      const semRecords = attendanceRecords.filter(r =>
-                        r.semester === semesterName &&
-                        r.course === statsCourseFilter &&
-                        (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter) &&
-                        (!isDepartmentLoggedIn || r.department === roleDepartmentData.department)
-                      );
-
-                      // Filter students for this semester, department, and COURSE
-                      const semStudents = studentSubmissions.filter(s =>
-                        s.semester === semesterName &&
-                        s.course === statsCourseFilter &&
-                        (!isDepartmentLoggedIn || api.departments.getCourses(roleDepartmentData.department).includes(s.course))
-                      );
-
-                      let totalPresent = 0;
-                      let totalAbsent = 0;
-                      let totalMarked = 0;
-
-                      semRecords.forEach(record => {
-                        Object.values(record.attendance).forEach(status => {
-                          if (status === 'Present') totalPresent++;
-                          else if (status === 'Absent') totalAbsent++;
-                          totalMarked++;
-                        });
-                      });
-
-                      const avgAttendance = totalMarked > 0 ? Math.round((totalPresent / totalMarked) * 100) : 0;
-
-                      return (
-                        <div key={semesterName} style={{ background: 'white', borderRadius: '15px', padding: '25px', boxShadow: '0 8px 25px rgba(0,0,0,0.08)', borderLeft: '6px solid var(--primary)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-                            <div>
-                              <h4 style={{ margin: '0 0 5px 0', color: 'var(--primary)', fontSize: '20px' }}>{semesterName}</h4>
-                              <p style={{ margin: 0, fontSize: '13px', color: '#888', fontWeight: '600' }}>{statsCourseFilter} {statsSubjectFilter !== 'All' ? `(${statsSubjectFilter})` : ''}</p>
-                            </div>
-                            <div style={{ borderRadius: '50%', width: '50px', height: '50px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>📈</div>
-                          </div>
-
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                            <span style={{ color: '#666' }}>Students Enrolled:</span>
-                            <span style={{ fontWeight: 'bold' }}>{semStudents.length}</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                            <span style={{ color: '#666' }}>Total Present Count:</span>
-                            <span style={{ color: '#27ae60', fontWeight: 'bold' }}>{totalPresent}</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                            <span style={{ color: '#666' }}>Total Absent Count:</span>
-                            <span style={{ color: '#e74c3c', fontWeight: 'bold' }}>{totalAbsent}</span>
-                          </div>
-
-                          <div style={{ height: '10px', background: '#eee', borderRadius: '5px', overflow: 'hidden', marginBottom: '10px' }}>
-                            <div style={{ width: `${avgAttendance}%`, height: '100%', background: 'linear-gradient(90deg, #2ecc71, #27ae60)', transition: 'width 0.5s ease-out' }}></div>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#444' }}>Average Attendance</span>
-                            <span style={{ fontSize: '18px', color: 'var(--primary)', fontWeight: '900' }}>{avgAttendance}%</span>
-                          </div>
-
-                          <button
-                            onClick={() => api.attendance.generateClassPDF(semStudents, semRecords, statsCourseFilter, semesterName)}
-                            style={{ width: '100%', marginTop: '20px', padding: '12px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', transition: 'background 0.3s' }}
-                            onMouseOver={(e) => e.currentTarget.style.background = '#6b2016'}
-                            onMouseOut={(e) => e.currentTarget.style.background = 'var(--primary)'}
-                          >
-                            📥 Download Class Attendance PDF
-                          </button>
-                        </div>
-                      );
-                    })()}
+                  ))}
+                </tbody>
+              </table>
+            ) : activeTab === 'attendance_stats' ? (
+              <div style={{ padding: '30px' }}>
+                {/* Filter Selection Panel */}
+                <div style={{ background: '#f8f9fa', padding: '25px', borderRadius: '15px', marginBottom: '30px', display: 'flex', gap: '20px', alignItems: 'center', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--primary)', fontWeight: 'bold', fontSize: '14px' }}>Select Course</label>
+                    <select
+                      value={statsCourseFilter}
+                      onChange={(e) => setStatsCourseFilter(e.target.value)}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none', background: 'white' }}
+                    >
+                      <option value="">-- Choose Course --</option>
+                      {(isDepartmentLoggedIn ? api.departments.getCourses(roleDepartmentData?.department) : [
+                        'BSE. Graphic', 'B.Tech Mechanical', 'B.Tech Civil', 'B.Tech Electrical', 'BCA', 'MCA', 'Arts of Computer'
+                      ]).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
                   </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--primary)', fontWeight: 'bold', fontSize: '14px' }}>Select Semester</label>
+                    <select
+                      value={statsSemesterFilter}
+                      onChange={(e) => setStatsSemesterFilter(e.target.value)}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none', background: 'white' }}
+                    >
+                      <option value="">-- Choose Semester --</option>
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => {
+                        const name = `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester`;
+                        return <option key={name} value={name}>{name}</option>
+                      })}
+                      {[1, 2, 3, 4,].map(n => {
+                        const name = `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Year`;
+                        return <option key={name} value={name}>{name}</option>
+                      })}
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--primary)', fontWeight: 'bold', fontSize: '14px' }}>Select Subject</label>
+                    <select
+                      value={statsSubjectFilter}
+                      onChange={(e) => setStatsSubjectFilter(e.target.value)}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none', background: 'white' }}
+                    >
+                      <option value="All">All Subjects</option>
+                      {Array.from(new Set(attendanceRecords
+                        .filter(r => r.course === statsCourseFilter && r.semester === statsSemesterFilter)
+                        .map(r => r.subject)
+                        .filter(Boolean)
+                      )).sort().map(sub => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-                  <div style={{ marginTop: '40px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '20px' }}>
-                      <h3 style={{ margin: 0, color: '#333' }}>Attendance History Library</h3>
-                      <span style={{ fontSize: '13px', color: '#888', background: '#f5f5f5', padding: '5px 12px', borderRadius: '15px' }}>
-                        Showing records for <strong>{statsCourseFilter}</strong> {statsSubjectFilter !== 'All' ? `(${statsSubjectFilter})` : ''}
-                      </span>
-                    </div>
+                {!statsCourseFilter || !statsSemesterFilter ? (
+                  <div style={{ textAlign: 'center', padding: '100px 20px', color: '#999', background: 'white', borderRadius: '15px', border: '2px dashed #eee' }}>
+                    <div style={{ fontSize: '50px', marginBottom: '20px' }}>📊</div>
+                    <h3 style={{ margin: 0, color: '#666' }}>Ready to analyze attendance data?</h3>
+                    <p style={{ margin: '10px 0 0 0' }}>Please select a <strong>Course</strong> and <strong>Semester</strong> above to generate the report.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+                      {(() => {
+                        const semesterName = statsSemesterFilter;
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {attendanceRecords
-                        .filter(r =>
-                          r.semester === statsSemesterFilter &&
+                        // Filter records for this semester, department, COURSE, and SUBJECT
+                        const semRecords = attendanceRecords.filter(r =>
+                          r.semester === semesterName &&
                           r.course === statsCourseFilter &&
                           (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter) &&
                           (!isDepartmentLoggedIn || r.department === roleDepartmentData.department)
-                        )
-                        .sort((a, b) => b.id - a.id)
-                        .map(record => {
-                          const presentCount = Object.values(record.attendance).filter(v => v === 'Present').length;
-                          const totalCount = Object.keys(record.attendance).length;
-                          return (
-                            <div key={record.id} style={{ padding: '15px 20px', background: 'white', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.03)', border: '1px solid #f0f0f0' }}>
+                        );
+
+                        // Filter students for this semester, department, and COURSE
+                        const semStudents = studentSubmissions.filter(s =>
+                          s.semester === semesterName &&
+                          s.course === statsCourseFilter &&
+                          (!isDepartmentLoggedIn || api.departments.getCourses(roleDepartmentData.department).includes(s.course))
+                        );
+
+                        let totalPresent = 0;
+                        let totalAbsent = 0;
+                        let totalMarked = 0;
+
+                        semRecords.forEach(record => {
+                          Object.values(record.attendance).forEach(status => {
+                            if (status === 'Present') totalPresent++;
+                            else if (status === 'Absent') totalAbsent++;
+                            totalMarked++;
+                          });
+                        });
+
+                        const avgAttendance = totalMarked > 0 ? Math.round((totalPresent / totalMarked) * 100) : 0;
+
+                        return (
+                          <div key={semesterName} style={{ background: 'white', borderRadius: '15px', padding: '25px', boxShadow: '0 8px 25px rgba(0,0,0,0.08)', borderLeft: '6px solid var(--primary)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                               <div>
-                                <div style={{ fontWeight: 'bold', color: '#444', fontSize: '16px' }}>{record.subject}</div>
-                                <div style={{ fontSize: '13px', color: '#999', marginTop: '4px' }}>
-                                  <span style={{ color: 'var(--primary)', fontWeight: '600' }}>{record.dateDisplay}</span> • Prof. {record.teacherName} • Session: {record.session || 'N/A'}
-                                </div>
+                                <h4 style={{ margin: '0 0 5px 0', color: 'var(--primary)', fontSize: '20px' }}>{semesterName}</h4>
+                                <p style={{ margin: 0, fontSize: '13px', color: '#888', fontWeight: '600' }}>{statsCourseFilter} {statsSubjectFilter !== 'All' ? `(${statsSubjectFilter})` : ''}</p>
                               </div>
-                              <div style={{ textAlign: 'right' }}>
-                                <div style={{ padding: '6px 15px', borderRadius: '20px', background: '#e8f5e9', color: '#2e7d32', fontSize: '13px', fontWeight: 'bold', display: 'inline-block' }}>
-                                  {presentCount} / {totalCount} Students Present
-                                </div>
-                                <div style={{ fontSize: '11px', color: '#aaa', marginTop: '5px' }}>ID: #{record.id}</div>
-                              </div>
+                              <div style={{ borderRadius: '50%', width: '50px', height: '50px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>📈</div>
                             </div>
-                          );
-                        })}
-                      {attendanceRecords.filter(r => r.semester === statsSemesterFilter && r.course === statsCourseFilter && (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter)).length === 0 && (
-                        <p style={{ textAlign: 'center', padding: '40px', color: '#bbb', fontStyle: 'italic' }}>No attendance records found for this selection.</p>
-                      )}
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                              <span style={{ color: '#666' }}>Students Enrolled:</span>
+                              <span style={{ fontWeight: 'bold' }}>{semStudents.length}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                              <span style={{ color: '#666' }}>Total Present Count:</span>
+                              <span style={{ color: '#27ae60', fontWeight: 'bold' }}>{totalPresent}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                              <span style={{ color: '#666' }}>Total Absent Count:</span>
+                              <span style={{ color: '#e74c3c', fontWeight: 'bold' }}>{totalAbsent}</span>
+                            </div>
+
+                            <div style={{ height: '10px', background: '#eee', borderRadius: '5px', overflow: 'hidden', marginBottom: '10px' }}>
+                              <div style={{ width: `${avgAttendance}%`, height: '100%', background: 'linear-gradient(90deg, #2ecc71, #27ae60)', transition: 'width 0.5s ease-out' }}></div>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#444' }}>Average Attendance</span>
+                              <span style={{ fontSize: '18px', color: 'var(--primary)', fontWeight: '900' }}>{avgAttendance}%</span>
+                            </div>
+
+                            <button
+                              onClick={() => api.attendance.generateClassPDF(semStudents, semRecords, statsCourseFilter, semesterName)}
+                              style={{ width: '100%', marginTop: '20px', padding: '12px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', transition: 'background 0.3s' }}
+                              onMouseOver={(e) => e.currentTarget.style.background = '#6b2016'}
+                              onMouseOut={(e) => e.currentTarget.style.background = 'var(--primary)'}
+                            >
+                              📥 Download Class Attendance PDF
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
-                  </div>
-                </>
-              )}
-            </div>
-          ) : activeTab === 'attendance_history' ? (
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr>
-                  {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={attendanceRecords.length > 0 && selectedIds.length === attendanceRecords.length} /></th>}
-                  <th style={thStyle}>Date</th>
-                  <th style={thStyle}>Subject</th>
-                  <th style={thStyle}>Teacher</th>
-                  <th style={thStyle}>Present</th>
-                  <th style={thStyle}>Total</th>
-                  <th style={thStyle}>Department</th>
-                </tr>
-              </thead>
-              <tbody>
-                {attendanceRecords.sort((a,b) => new Date(b.date) - new Date(a.date)).map((r) => {
-                  const id = r._id || r.id;
-                  const presentCount = Object.values(r.attendance || {}).filter(v => v === 'Present').length;
-                  const totalCount = Object.keys(r.attendance || {}).length;
-                  return (
-                    <tr key={id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(id) ? '#f0f8ff' : 'transparent' }}>
-                      {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(id)} onChange={() => handleSelect(id)} /></td>}
-                      <td style={tdStyle}>{r.dateDisplay || r.date}</td>
-                      <td style={{ ...tdStyle, fontWeight: 600 }}>{r.subject}</td>
-                      <td style={tdStyle}>{r.teacherName}</td>
-                      <td style={{ ...tdStyle, color: '#27ae60', fontWeight: 'bold' }}>{presentCount}</td>
-                      <td style={tdStyle}>{totalCount}</td>
-                      <td style={tdStyle}>{r.department}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : null
-        ))}
+
+                    <div style={{ marginTop: '40px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '20px' }}>
+                        <h3 style={{ margin: 0, color: '#333' }}>Attendance History Library</h3>
+                        <span style={{ fontSize: '13px', color: '#888', background: '#f5f5f5', padding: '5px 12px', borderRadius: '15px' }}>
+                          Showing records for <strong>{statsCourseFilter}</strong> {statsSubjectFilter !== 'All' ? `(${statsSubjectFilter})` : ''}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {attendanceRecords
+                          .filter(r =>
+                            r.semester === statsSemesterFilter &&
+                            r.course === statsCourseFilter &&
+                            (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter) &&
+                            (!isDepartmentLoggedIn || r.department === roleDepartmentData.department)
+                          )
+                          .sort((a, b) => b.id - a.id)
+                          .map(record => {
+                            const presentCount = Object.values(record.attendance).filter(v => v === 'Present').length;
+                            const totalCount = Object.keys(record.attendance).length;
+                            return (
+                              <div key={record.id} style={{ padding: '15px 20px', background: 'white', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.03)', border: '1px solid #f0f0f0' }}>
+                                <div>
+                                  <div style={{ fontWeight: 'bold', color: '#444', fontSize: '16px' }}>{record.subject}</div>
+                                  <div style={{ fontSize: '13px', color: '#999', marginTop: '4px' }}>
+                                    <span style={{ color: 'var(--primary)', fontWeight: '600' }}>{record.dateDisplay}</span> • Prof. {record.teacherName} • Session: {record.session || 'N/A'}
+                                  </div>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                  <div style={{ padding: '6px 15px', borderRadius: '20px', background: '#e8f5e9', color: '#2e7d32', fontSize: '13px', fontWeight: 'bold', display: 'inline-block' }}>
+                                    {presentCount} / {totalCount} Students Present
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: '#aaa', marginTop: '5px' }}>ID: #{record.id}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        {attendanceRecords.filter(r => r.semester === statsSemesterFilter && r.course === statsCourseFilter && (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter)).length === 0 && (
+                          <p style={{ textAlign: 'center', padding: '40px', color: '#bbb', fontStyle: 'italic' }}>No attendance records found for this selection.</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null
+          )))}
       </div>
 
       {showPdfModal && (
@@ -1202,15 +1168,15 @@ function Admin() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
           <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', position: 'relative' }}>
             <button onClick={() => setShowTeacherModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
-            
+
             <div style={{ display: 'flex', gap: '25px', borderBottom: '2px solid #eee', paddingBottom: '20px', marginBottom: '20px' }}>
               <img src={selectedTeacher.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '120px', height: '120px', borderRadius: '12px', objectFit: 'cover', border: '3px solid var(--primary)' }} />
               <div style={{ flex: 1 }}>
                 {isEditingDetails ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <input 
-                      type="text" 
-                      defaultValue={selectedTeacher.fullName} 
+                    <input
+                      type="text"
+                      defaultValue={selectedTeacher.fullName}
                       onChange={(e) => {
                         let val = e.target.value;
                         if (val.length > 0) val = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
@@ -1241,7 +1207,7 @@ function Admin() {
                     </div>
                   </>
                 )}
-                
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '14px', marginTop: '10px' }}>
                   <div style={{ color: '#27ae60', background: '#e8f5e9', padding: '8px 12px', borderRadius: '8px' }}>
                     <strong>Portal Username:</strong> {selectedTeacher.username}
@@ -1256,13 +1222,13 @@ function Admin() {
             <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
               {isEditingDetails ? (
                 <>
-                  <button 
+                  <button
                     onClick={() => handleUpdateDetails('teacher')}
                     style={{ background: '#27ae60', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
                   >
                     Save Changes ✅
                   </button>
-                  <button 
+                  <button
                     onClick={() => { setIsEditingDetails(false); setEditFormData({}); }}
                     style={{ background: '#666', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
                   >
@@ -1271,19 +1237,19 @@ function Admin() {
                 </>
               ) : (
                 <>
-                  <button 
+                  <button
                     onClick={() => setIsEditingDetails(true)}
                     style={{ background: '#3498db', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
                   >
                     Edit Details ✏️
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleShare(selectedTeacher, 'Teacher')}
                     style={{ background: '#25D366', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
                   >
                     Share 📲
                   </button>
-                  <button 
+                  <button
                     onClick={() => setShowTeacherModal(false)}
                     style={{ background: '#333', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
                   >
@@ -1301,15 +1267,15 @@ function Admin() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
           <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', position: 'relative' }}>
             <button onClick={() => setShowStudentModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
-            
+
             <div style={{ display: 'flex', gap: '25px', borderBottom: '2px solid #eee', paddingBottom: '20px', marginBottom: '20px' }}>
               <img src={selectedStudent.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '110px', height: '110px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--primary)' }} />
               <div style={{ flex: 1 }}>
                 {isEditingDetails ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <input 
-                      type="text" 
-                      defaultValue={selectedStudent.fullName} 
+                    <input
+                      type="text"
+                      defaultValue={selectedStudent.fullName}
                       onChange={(e) => {
                         let val = e.target.value;
                         if (val.length > 0) val = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
@@ -1334,7 +1300,7 @@ function Admin() {
                     </div>
                   </>
                 )}
-                
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '14px', marginTop: '10px' }}>
                   <div style={{ color: '#27ae60', background: '#e8f5e9', padding: '8px 12px', borderRadius: '8px' }}>
                     <strong>Portal User ID:</strong> {selectedStudent.username}
@@ -1349,13 +1315,13 @@ function Admin() {
             <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
               {isEditingDetails ? (
                 <>
-                  <button 
+                  <button
                     onClick={() => handleUpdateDetails('student')}
                     style={{ background: '#27ae60', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
                   >
                     Save Changes ✅
                   </button>
-                  <button 
+                  <button
                     onClick={() => { setIsEditingDetails(false); setEditFormData({}); }}
                     style={{ background: '#666', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
                   >
@@ -1364,19 +1330,19 @@ function Admin() {
                 </>
               ) : (
                 <>
-                  <button 
+                  <button
                     onClick={() => setIsEditingDetails(true)}
                     style={{ background: '#3498db', color: 'white', border: 'none', padding: '12px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
                   >
                     Edit Details ✏️
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleShare(selectedStudent, 'Student')}
                     style={{ background: '#25D366', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
                   >
                     Share 📲
                   </button>
-                  <button 
+                  <button
                     onClick={() => setShowStudentModal(false)}
                     style={{ background: '#333', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
                   >
@@ -1394,7 +1360,7 @@ function Admin() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
           <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', position: 'relative' }}>
             <button onClick={() => setShowDeptModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
-            
+
             <div style={{ display: 'flex', gap: '25px', borderBottom: '2px solid #eee', paddingBottom: '20px', marginBottom: '20px' }}>
               <img src={selectedDept.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '110px', height: '110px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--primary)' }} />
               <div style={{ flex: 1 }}>
@@ -1414,13 +1380,13 @@ function Admin() {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20px', gap: '15px' }}>
-              <button 
+              <button
                 onClick={() => handleShare(selectedDept, 'Department HOD')}
                 style={{ background: '#25D366', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
               >
                 Share Details 📲
               </button>
-              <button 
+              <button
                 onClick={() => setShowDeptModal(false)}
                 style={{ background: '#333', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
               >
@@ -1436,7 +1402,7 @@ function Admin() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
           <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', position: 'relative' }}>
             <button onClick={() => setShowAdminModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
-            
+
             <div style={{ display: 'flex', gap: '25px', borderBottom: '2px solid #eee', paddingBottom: '20px', marginBottom: '20px' }}>
               <img src={selectedAdmin.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--primary)' }} />
               <div style={{ flex: 1 }}>
@@ -1456,13 +1422,13 @@ function Admin() {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20px', gap: '15px' }}>
-              <button 
+              <button
                 onClick={() => handleShare(selectedAdmin, 'Master Admin')}
                 style={{ background: '#25D366', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
               >
                 Share Details 📲
               </button>
-              <button 
+              <button
                 onClick={() => setShowAdminModal(false)}
                 style={{ background: '#333', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
               >
