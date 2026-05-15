@@ -16,7 +16,9 @@ function TeacherProfile() {
   const [attendanceRecords, setAttendanceRecords] = useState([]); // Loaded from API
   const [saveStatus, setSaveStatus] = useState({ text: '', type: '' });
   const [selectedHistory, setSelectedHistory] = useState(null); // Updated state for modal viewing
-  const [historySemesterFilter, setHistorySemesterFilter] = useState(''); // New history filter state
+  const [historySemesterFilter, setHistorySemesterFilter] = useState('');
+  const [historyCourseFilter, setHistoryCourseFilter] = useState('');
+  const [historySubjectFilter, setHistorySubjectFilter] = useState('');
   const [selectedCourse, setSelectedCourse] = useState('');
   const [selectedSession, setSelectedSession] = useState('Lecture 1'); // Session selection state
   const [showPdfModal, setShowPdfModal] = useState(false);
@@ -389,6 +391,82 @@ function TeacherProfile() {
     }
   };
 
+  const handleStopLiveScan = () => {
+    setIsAnalyzing(true);
+    setScanProgress(50);
+    setDetectionLog(['🛑 Stopping Live Scanner & Generating Results...']);
+
+    let canvas = document.createElement('canvas');
+    let hasVideo = false;
+    if (videoRef.current && videoRef.current.videoWidth) {
+        canvas.width = videoRef.current.videoWidth;
+        canvas.height = videoRef.current.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        hasVideo = true;
+    } else {
+        canvas.width = 1280;
+        canvas.height = 720;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+    }
+
+    const presentList = [];
+    const absentList = [];
+    const newMarks = { ...attendanceMarks };
+
+    filteredBySemester.forEach(student => {
+      const isPresent = detectedIds.includes(student.id || student._id);
+      newMarks[student.id || student._id] = isPresent ? 'Present' : 'Absent';
+      if (isPresent) {
+        presentList.push(student);
+      } else {
+        absentList.push(student);
+      }
+    });
+
+    // Add Overlay to the Proof Image
+    const fctx = canvas.getContext('2d');
+    if (fctx) {
+        fctx.fillStyle = 'rgba(39, 174, 96, 0.85)';
+        fctx.fillRect(0, 0, canvas.width, 120);
+        fctx.fillStyle = 'white';
+        fctx.font = 'bold 28px "Inter", Arial';
+        const now = new Date();
+        fctx.fillText(`MRSPTU CONTINUOUS SCAN PROOF | ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`, 30, 50);
+        fctx.font = '22px "Inter", Arial';
+        fctx.fillText(`Subject: ${selectedSubject || teacher.primarySubject} | Semester: ${semesterFilter}`, 30, 90);
+        fctx.textAlign = 'right';
+        fctx.font = 'bold 40px "Inter", Arial';
+        fctx.fillText(`${presentList.length} STUDENTS PRESENT`, canvas.width - 30, 75);
+    }
+
+    const stampedPhoto = canvas.toDataURL('image/jpeg', 0.8);
+    setGroupPhoto(stampedPhoto);
+    setCapturedImage(stampedPhoto);
+
+    // Stop video AFTER extracting the image data
+    if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+    }
+
+    setAttendanceMarks(newMarks);
+    setScanResultsData({ present: presentList, absent: absentList });
+
+    setScanProgress(100);
+
+    setTimeout(() => {
+      setIsAnalyzing(false);
+      setShowScanResults(true);
+    }, 1000);
+  };
+
   const startLiveScan = () => {
     if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
     
@@ -462,8 +540,6 @@ function TeacherProfile() {
       "5th Semester", "6th Semester", "7th Semester", "8th Semester",
       "9th Semester", "10th Semester"
     ];
-    // Return all semesters for filtering purposes in Students/History tabs
-    if (activeTab !== 'attendance') return sems;
 
     return sems.filter((_, index) => {
       const semNum = index + 1;
@@ -718,7 +794,14 @@ function TeacherProfile() {
 
   if (!teacher) return null;
 
+  const isAttendanceReady = selectedCourse && selectedCourse !== 'All' && semesterFilter && semesterFilter !== 'All' && selectedSubject;
+  const isStudentsReady = selectedCourse && semesterFilter;
+  const isHistoryReady = historyCourseFilter && historyCourseFilter !== 'All' && historySemesterFilter && historySemesterFilter !== 'All' && historySubjectFilter;
+
   const filteredBySemester = (isLoadingStudents) ? [] : students.filter(s => {
+    if (activeTab === 'attendance' && !isAttendanceReady) return false;
+    if (activeTab === 'students' && !isStudentsReady) return false;
+
     if (selectedCourse && selectedCourse !== 'All' && s.course !== selectedCourse) return false;
     if (semesterFilter === '' || semesterFilter === 'All') return true;
     const semNum = semesterFilter.split(' ')[0].replace(/[^0-9]/g, '');
@@ -803,7 +886,7 @@ function TeacherProfile() {
           Attendance Management
         </button>
         <button 
-          onClick={() => { setActiveTab('history'); setHistorySemesterFilter(''); }} 
+          onClick={() => { setActiveTab('history'); setHistorySemesterFilter(''); setHistoryCourseFilter(''); setHistorySubjectFilter(''); }} 
           style={{ 
             padding: '12px 25px', border: 'none', background: 'none', 
             borderBottom: activeTab === 'history' ? '3px solid #8a2c20' : 'none', 
@@ -847,7 +930,7 @@ function TeacherProfile() {
                   onChange={(e) => setSelectedCourse(e.target.value)}
                   style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
                 >
-                  <option value="All">All Courses</option>
+                  <option value="">Select Course</option>
                   {[...new Set(students.map(s => s.course))].filter(Boolean).sort().map(course => (
                     <option key={course} value={course}>{course}</option>
                   ))}
@@ -858,7 +941,6 @@ function TeacherProfile() {
                   style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
                 >
                   <option value="">Select Semester</option>
-                  <option value="All">All Semesters</option>
                   {getAvailableSemesters().map(sem => (
                     <option key={sem} value={sem}>{sem}</option>
                   ))}
@@ -873,7 +955,13 @@ function TeacherProfile() {
               )}
             </div>
             
-            {(filteredBySemester.length === 0 && !isLoadingStudents) ? (
+            {!isStudentsReady && !isLoadingStudents ? (
+              <div style={{ textAlign: 'center', padding: '60px 40px', background: '#fcfcfc', borderRadius: '15px', border: '2px dashed #eee', marginTop: '20px' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '15px', opacity: 0.5 }}>👥</div>
+                <h4 style={{ color: '#8a2c20', margin: '0 0 10px 0' }}>Selection Required</h4>
+                <p style={{ color: '#666', margin: 0 }}>Please select a <strong>Course</strong> and <strong>Semester</strong> to view the students list.</p>
+              </div>
+            ) : (filteredBySemester.length === 0 && !isLoadingStudents) ? (
               <p style={{ textAlign: 'center', padding: '40px', color: '#999', fontStyle: 'italic' }}>No students found {semesterFilter && semesterFilter !== 'All' ? `for ${semesterFilter}` : 'in your department'}.</p>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -982,7 +1070,6 @@ function TeacherProfile() {
                       style={{ padding: '12px 16px', borderRadius: '10px', border: '1.5px solid #e2e8f0', background: '#f8fafc', fontWeight: '600', fontSize: '15px', color: '#1e293b', appearance: 'none', cursor: 'pointer' }}
                     >
                       <option value="">Choose Course</option>
-                      <option value="All">All Courses</option>
                       {[...new Set([...Object.keys(subjectMapping), ...students.map(s => s.course)])].filter(Boolean).sort().map(course => (
                         <option key={course} value={course}>{course}</option>
                       ))}
@@ -1127,7 +1214,7 @@ function TeacherProfile() {
 
             {markingMode === 'manual' ? (
               <>
-                {(filteredBySemester.length > 0 || isLoadingStudents) ? (
+                {(isAttendanceReady || isLoadingStudents) ? (
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #e2e8f0' }}>
@@ -1213,7 +1300,7 @@ function TeacherProfile() {
                     <div style={{ fontSize: '5rem', marginBottom: '25px', filter: 'grayscale(100%) brightness(1.2)', opacity: 0.5 }}>📋</div>
                     <h3 style={{ color: '#1e293b', fontSize: '1.8rem', fontWeight: '800', margin: '0 0 10px 0' }}>Data Selection Required</h3>
                     <p style={{ color: '#64748b', fontSize: '1.1rem', maxWidth: '500px', margin: '0 auto', lineHeight: '1.6' }}>
-                      Please select a <strong>Course</strong> and <strong>Semester</strong> from the control panel above to load the student attendance sheet.
+                      Please select a <strong>Course</strong>, <strong>Semester</strong> and <strong>Assigned Subject</strong> from the control panel above to load the student attendance sheet.
                     </p>
                   </div>
                 )}
@@ -1372,17 +1459,30 @@ function TeacherProfile() {
                               Exit Scanner
                             </button>
                             {!groupPhoto ? (
-                                <button 
-                                  onClick={performGroupAnalysis}
-                                  disabled={isAnalyzing || !semesterFilter || !modelsLoaded}
-                                  style={{ 
-                                    background: (isAnalyzing || !semesterFilter || !modelsLoaded) ? '#555' : '#8a2c20', 
-                                    color: 'white', border: 'none', padding: '15px 50px', borderRadius: '15px', fontWeight: 'bold', cursor: 'pointer',
-                                    boxShadow: '0 5px 20px rgba(138,44,32,0.4)', transition: 'all 0.3s'
-                                  }}
-                                >
-                                  {!modelsLoaded ? 'Loading AI Engine...' : 'Capture & Analyze Group Photo'}
-                                </button>
+                                <>
+                                  <button 
+                                    onClick={performGroupAnalysis}
+                                    disabled={isAnalyzing || !semesterFilter || !modelsLoaded}
+                                    style={{ 
+                                      background: (isAnalyzing || !semesterFilter || !modelsLoaded) ? '#555' : '#8a2c20', 
+                                      color: 'white', border: 'none', padding: '15px 30px', borderRadius: '15px', fontWeight: 'bold', cursor: 'pointer',
+                                      boxShadow: '0 5px 20px rgba(138,44,32,0.4)', transition: 'all 0.3s'
+                                    }}
+                                  >
+                                    {!modelsLoaded ? 'Loading AI Engine...' : 'Capture Group Photo'}
+                                  </button>
+                                  <button 
+                                    onClick={handleStopLiveScan}
+                                    disabled={isAnalyzing || !semesterFilter || !modelsLoaded}
+                                    style={{ 
+                                      background: (isAnalyzing || !semesterFilter || !modelsLoaded) ? '#555' : '#27ae60', 
+                                      color: 'white', border: 'none', padding: '15px 30px', borderRadius: '15px', fontWeight: 'bold', cursor: 'pointer',
+                                      boxShadow: '0 5px 20px rgba(39,174,96,0.4)', transition: 'all 0.3s'
+                                    }}
+                                  >
+                                    {!modelsLoaded ? 'Loading AI Engine...' : 'Stop & Finalize Live Scan'}
+                                  </button>
+                                </>
                             ) : (
                                 <button 
                                   onClick={() => { setGroupPhoto(null); startCamera(); }}
@@ -1598,69 +1698,85 @@ function TeacherProfile() {
           </div>
         )}
 
-        {activeTab === 'history' && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ color: '#8a2c20', borderBottom: '1px solid #eee', paddingBottom: '10px', margin: 0 }}>Previous Attendance Records</h3>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <select 
-                  value={historySemesterFilter} 
-                  onChange={(e) => setHistorySemesterFilter(e.target.value)}
-                  style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
-                >
-                  <option value="">Select Semester</option>
-                  <option value="All">All Semesters</option>
-                  <option value="1st Semester">1st Semester</option>
-                  <option value="2nd Semester">2nd Semester</option>
-                  <option value="3rd Semester">3rd Semester</option>
-                  <option value="4th Semester">4th Semester</option>
-                  <option value="5th Semester">5th Semester</option>
-                  <option value="6th Semester">6th Semester</option>
-                  <option value="7th Semester">7th Semester</option>
-                  <option value="8th Semester">8th Semester</option>
-                  <option value="9th Semester">9th Semester</option>
-                  <option value="10th Semester">10th Semester</option>
-                </select>
-                {historySemesterFilter && historySemesterFilter !== 'All' && attendanceRecords.filter(r => r.semester === historySemesterFilter).length > 0 && (
-                  <button 
-                    onClick={() => {
-                      const semStudents = students.filter(s => {
-                        const semNum = historySemesterFilter.split(' ')[0].replace(/[^0-9]/g, '');
-                        return String(s.semester) === semNum || String(s.semester) === historySemesterFilter;
-                      });
-                      const semRecords = attendanceRecords.filter(r => r.semester === historySemesterFilter).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
-                      api.attendance.generateClassPDF(semStudents, semRecords, teacher.primarySubject, historySemesterFilter);
-                    }}
-                    style={{ background: '#27ae60', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+        {activeTab === 'history' && (() => {
+          const teacherHistory = attendanceRecords
+            .filter(r => {
+              const matchesSem = historySemesterFilter === 'All' || r.semester === historySemesterFilter;
+              const matchesCourse = historyCourseFilter === 'All' || r.course === historyCourseFilter || (!r.course && historyCourseFilter === '');
+              const matchesSubject = historySubjectFilter === 'All' || r.subject === historySubjectFilter;
+              return matchesSem && matchesCourse && matchesSubject;
+            })
+            .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+          return (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ color: '#8a2c20', borderBottom: '1px solid #eee', paddingBottom: '10px', margin: 0 }}>Previous Attendance Records</h3>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <select 
+                    value={historyCourseFilter} 
+                    onChange={(e) => { setHistoryCourseFilter(e.target.value); setHistorySubjectFilter(''); }}
+                    style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
                   >
-                    📥 Download Report
-                  </button>
-                )}
+                    <option value="">Choose Course</option>
+                    {[...new Set([...Object.keys(subjectMapping), ...students.map(s => s.course)])].filter(Boolean).sort().map(course => (
+                      <option key={course} value={course}>{course}</option>
+                    ))}
+                  </select>
+
+                  <select 
+                    value={historySemesterFilter} 
+                    onChange={(e) => { setHistorySemesterFilter(e.target.value); setHistorySubjectFilter(''); }}
+                    style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
+                  >
+                    <option value="">Choose Semester</option>
+                    {getAvailableSemesters().map(sem => (
+                      <option key={sem} value={sem}>{sem}</option>
+                    ))}
+                  </select>
+
+                  <select 
+                    value={historySubjectFilter} 
+                    onChange={(e) => setHistorySubjectFilter(e.target.value)}
+                    style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
+                  >
+                    <option value="">Choose Subject</option>
+                    {(() => {
+                      const semNum = historySemesterFilter?.match(/\d+/)?.[0];
+                      const subjects = (subjectMapping[historyCourseFilter] && semNum) ? subjectMapping[historyCourseFilter][semNum] : null;
+                      if (subjects) return subjects.map(s => <option key={s} value={s}>{s}</option>);
+                      return <option value={teacher.primarySubject}>{teacher.primarySubject}</option>;
+                    })()}
+                  </select>
+                  {isHistoryReady && teacherHistory.length > 0 && (
+                    <button 
+                      onClick={() => {
+                        const semStudents = students.filter(s => {
+                          const semNum = historySemesterFilter.split(' ')[0].replace(/[^0-9]/g, '');
+                          return (String(s.semester) === semNum || String(s.semester) === historySemesterFilter) &&
+                                 (historyCourseFilter === 'All' || s.course === historyCourseFilter);
+                        });
+                        api.attendance.generateClassPDF(semStudents, teacherHistory, historySubjectFilter, historySemesterFilter);
+                      }}
+                      style={{ background: '#27ae60', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      📥 Download Report
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-            
-            {(() => {
-              const teacherHistory = attendanceRecords
-                .filter(r => historySemesterFilter === 'All' || r.semester === historySemesterFilter)
-                .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-              if (historySemesterFilter === '') {
-                return (
-                  <p style={{ textAlign: 'center', padding: '40px', color: '#999', fontStyle: 'italic' }}>
-                    Please select a specific semester to view history records.
-                  </p>
-                );
-              }
-
-              if (teacherHistory.length === 0) {
-                return (
-                  <p style={{ textAlign: 'center', padding: '40px', color: '#999', fontStyle: 'italic' }}>
-                    {historySemesterFilter === 'All' ? 'No attendance history found yet.' : `No history records found for ${historySemesterFilter}.`}
-                  </p>
-                );
-              }
-
-              return (
+              
+              {!isHistoryReady ? (
+                <div style={{ textAlign: 'center', padding: '60px 40px', background: '#fcfcfc', borderRadius: '15px', border: '2px dashed #eee', marginTop: '20px' }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '15px', opacity: 0.5 }}>📊</div>
+                  <h4 style={{ color: '#8a2c20', margin: '0 0 10px 0' }}>History Filtering Required</h4>
+                  <p style={{ color: '#666', margin: 0 }}>Please select a <strong>Course</strong>, <strong>Semester</strong> and <strong>Subject</strong> to view previous attendance records.</p>
+                </div>
+              ) : teacherHistory.length === 0 ? (
+                <p style={{ textAlign: 'center', padding: '40px', color: '#999', fontStyle: 'italic' }}>
+                  {historySemesterFilter === 'All' ? 'No attendance history found yet.' : `No history records found for the selected criteria.`}
+                </p>
+              ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                   <thead>
                     <tr style={{ background: '#f8f9fa', fontSize: '12px', textTransform: 'uppercase' }}>
@@ -1730,10 +1846,10 @@ function TeacherProfile() {
                     )}
                   </tbody>
                 </table>
-              );
-            })()}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Attendance History Details Modal */}

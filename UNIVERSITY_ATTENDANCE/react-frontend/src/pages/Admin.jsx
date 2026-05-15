@@ -233,7 +233,7 @@ function Admin() {
     }
 
     loadSubmissions();
-  }, [navigate, isAdminLoggedIn, isDepartmentLoggedIn, activeTab, studentDeptFilter, roleDepartmentData]);
+  }, []);
 
   async function loadSubmissions() {
     setIsLoading(true);
