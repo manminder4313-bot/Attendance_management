@@ -458,7 +458,7 @@ function Admin() {
   const filteredStudents = baseStudents.filter(s =>
     (isDepartmentLoggedIn || !studentDeptFilter || s.department === studentDeptFilter) &&
     (s.course === courseFilter) &&
-    (s.semester === semesterFilter || String(s.semester) === semesterFilter.split(' ')[0])
+    (s.semester === semesterFilter || String(s.semester).replace(/\D/g, '') === semesterFilter.replace(/\D/g, ''))
   )
     .sort((a, b) => (a.enrollmentNumber || '').localeCompare(b.enrollmentNumber || '', undefined, { numeric: true }));
 
@@ -936,7 +936,7 @@ function Admin() {
                     >
                       <option value="All">All Subjects</option>
                       {Array.from(new Set(attendanceRecords
-                        .filter(r => r.course === statsCourseFilter && r.semester === statsSemesterFilter)
+                        .filter(r => r.course === statsCourseFilter && (r.semester === statsSemesterFilter || String(r.semester).replace(/\D/g, '') === statsSemesterFilter.replace(/\D/g, '')))
                         .map(r => r.subject)
                         .filter(Boolean)
                       )).sort().map(sub => (
@@ -960,7 +960,7 @@ function Admin() {
 
                         // Filter records for this semester, department, COURSE, and SUBJECT
                         const semRecords = attendanceRecords.filter(r =>
-                          r.semester === semesterName &&
+                          (r.semester === semesterName || String(r.semester).replace(/\D/g, '') === semesterName.replace(/\D/g, '')) &&
                           r.course === statsCourseFilter &&
                           (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter) &&
                           (!isDepartmentLoggedIn || r.department === roleDepartmentData.department)
@@ -968,7 +968,7 @@ function Admin() {
 
                         // Filter students for this semester, department, and COURSE
                         const semStudents = studentSubmissions.filter(s =>
-                          s.semester === semesterName &&
+                          (s.semester === semesterName || String(s.semester).replace(/\D/g, '') === semesterName.replace(/\D/g, '')) &&
                           s.course === statsCourseFilter &&
                           (!isDepartmentLoggedIn || api.departments.getCourses(roleDepartmentData.department).includes(s.course))
                         );
@@ -1042,7 +1042,7 @@ function Admin() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         {attendanceRecords
                           .filter(r =>
-                            r.semester === statsSemesterFilter &&
+                            (r.semester === statsSemesterFilter || String(r.semester).replace(/\D/g, '') === statsSemesterFilter.replace(/\D/g, '')) &&
                             r.course === statsCourseFilter &&
                             (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter) &&
                             (!isDepartmentLoggedIn || r.department === roleDepartmentData.department)
@@ -1068,7 +1068,7 @@ function Admin() {
                               </div>
                             );
                           })}
-                        {attendanceRecords.filter(r => r.semester === statsSemesterFilter && r.course === statsCourseFilter && (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter)).length === 0 && (
+                        {attendanceRecords.filter(r => (r.semester === statsSemesterFilter || String(r.semester).replace(/\D/g, '') === statsSemesterFilter.replace(/\D/g, '')) && r.course === statsCourseFilter && (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter)).length === 0 && (
                           <p style={{ textAlign: 'center', padding: '40px', color: '#bbb', fontStyle: 'italic' }}>No attendance records found for this selection.</p>
                         )}
                       </div>
