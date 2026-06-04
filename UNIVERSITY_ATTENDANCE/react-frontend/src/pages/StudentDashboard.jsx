@@ -107,7 +107,10 @@ function StudentDashboard() {
       
     } catch (err) {
       console.error(err);
-      setEnrollStatusMsg('Device biometrics failed: ' + err.message);
+      const friendlyMsg = (err.message || String(err)).includes('not allowed') || (err.message || String(err)).includes('timed out') || (err.message || String(err)).includes('NotAllowedError') || (err.message || String(err)).includes('SecurityError') || (err.message || String(err)).includes('not supported')
+        ? 'Device biometrics (WebAuthn) requires built-in biometric hardware (like Touch ID / Windows Hello setup). If on a desktop, please use the USB hardware or Simulated Scan options.'
+        : 'Device biometrics failed: ' + err.message;
+      setEnrollStatusMsg(friendlyMsg);
     }
   };
 

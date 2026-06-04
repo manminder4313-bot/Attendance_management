@@ -128,7 +128,10 @@ function StudentFingerprintUpload() {
       
     } catch (err) {
       console.error(err);
-      setStatus({ text: 'Device biometrics rejected or not supported: ' + err.message, type: 'error' });
+      const friendlyMsg = (err.message || String(err)).includes('not allowed') || (err.message || String(err)).includes('timed out') || (err.message || String(err)).includes('NotAllowedError') || (err.message || String(err)).includes('SecurityError') || (err.message || String(err)).includes('not supported')
+        ? 'Device biometrics (WebAuthn) requires a device with built-in biometric hardware (like Touch ID / Windows Hello setup). If on a desktop, please use the USB hardware or Simulated Scan options.'
+        : 'Device biometrics rejected or not supported: ' + err.message;
+      setStatus({ text: friendlyMsg, type: 'error' });
     } finally {
       setLoading(false);
     }
