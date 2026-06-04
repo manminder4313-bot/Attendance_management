@@ -1999,197 +1999,21 @@ function TeacherProfile() {
             ) : (
               <div>
                 {(isAttendanceReady || isLoadingStudents) ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px', padding: '20px' }}>
-                    {/* Left Column - Fingerprint Scanner Hardware Simulator */}
-                    <div style={{ background: '#0a0f1d', borderRadius: '24px', padding: '40px 30px', textAlign: 'center', border: '1px solid rgba(0,230,118,0.2)', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '450px', position: 'relative', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
-                      {/* Grid background effect */}
-                      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0.05, backgroundImage: 'linear-gradient(to right, #00e676 1px, transparent 1px), linear-gradient(to bottom, #00e676 1px, transparent 1px)', backgroundSize: '20px 20px', pointerEvents: 'none' }}></div>
-                      
-                      {isFingerScanning ? (
-                        <>
-                          <div style={{ position: 'relative', width: '120px', height: '140px', marginBottom: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {/* Scanning fingerprint graphic */}
-                            <svg width="120" height="140" viewBox="0 0 24 28" fill="none" stroke="#00e676" strokeWidth="1" strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 8px #00e676)' }}>
-                              <path d="M12 2C6.48 2 2 6.48 2 12C2 13.92 2.55 15.7 3.5 17.2M22 12C22 6.48 17.52 2 12 2" />
-                              <path d="M5.5 19.5C6.75 21 8.5 22 10.5 22.3M18.5 19.5C19.38 18.5 20 17.2 20.3 15.8" />
-                              <path d="M8.5 7.5C10 6.5 12 6.5 13.5 7.5M6.5 11C7 9.5 8.5 8.5 10.5 8.2M15.5 12.5C15 14 13.5 15 11.5 15.3" />
-                              <path d="M10 11C10 11.5 10.5 12 11 12C11.5 12 12 11.5 12 11C12 10.5 11.5 10 11 10C10.5 10 10 10.5 10 11" />
-                            </svg>
-                            {/* Laser Line */}
-                            <div style={{ position: 'absolute', left: 0, right: 0, height: '4px', background: '#00e676', boxShadow: '0 0 15px #00e676', animation: 'laserScan 1.5s infinite ease-in-out', borderRadius: '2px' }}></div>
-                          </div>
-                          
-                          <h3 style={{ color: '#00e676', margin: '0 0 10px 0', fontSize: '1.4rem', fontFamily: 'monospace', letterSpacing: '1px' }}>
-                            BIOMETRIC SCANNING
-                          </h3>
-                          <div style={{ width: '80%', height: '8px', background: '#222', borderRadius: '4px', marginBottom: '20px', overflow: 'hidden' }}>
-                            <div style={{ width: `${scanFingerProgress}%`, height: '100%', background: '#00e676', transition: 'width 0.1s linear', boxShadow: '0 0 10px #00e676' }}></div>
-                          </div>
-                          <div style={{ fontSize: '14px', fontFamily: 'monospace', color: '#8892b0', height: '24px' }}>
-                            {scanningStudent ? `Matching fingerprint for ${scanningStudent.fullName}...` : 'Auto-scanning live fingerprint...'}
-                          </div>
-                        </>
-                      ) : isFingerEnrolling ? (
-                        <>
-                          <div style={{ position: 'relative', width: '120px', height: '140px', marginBottom: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <svg width="120" height="140" viewBox="0 0 24 28" fill="none" stroke="#2196f3" strokeWidth="1" strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 8px #2196f3)' }}>
-                              <path d="M12 2C6.48 2 2 6.48 2 12C2 13.92 2.55 15.7 3.5 17.2M22 12C22 6.48 17.52 2 12 2" />
-                              <path d="M5.5 19.5C6.75 21 8.5 22 10.5 22.3M18.5 19.5C19.38 18.5 20 17.2 20.3 15.8" />
-                            </svg>
-                            <div style={{ position: 'absolute', left: 0, right: 0, height: '4px', background: '#2196f3', boxShadow: '0 0 15px #2196f3', animation: 'laserScan 1.5s infinite ease-in-out', borderRadius: '2px' }}></div>
-                          </div>
-                          <h3 style={{ color: '#2196f3', margin: '0 0 10px 0', fontSize: '1.4rem', fontFamily: 'monospace', letterSpacing: '1px' }}>
-                            ENROLLING FINGERPRINT
-                          </h3>
-                          <div style={{ width: '80%', height: '8px', background: '#222', borderRadius: '4px', marginBottom: '20px', overflow: 'hidden' }}>
-                            <div style={{ width: `${enrollFingerProgress}%`, height: '100%', background: '#2196f3', transition: 'width 0.1s linear', boxShadow: '0 0 10px #2196f3' }}></div>
-                          </div>
-                          <div style={{ fontSize: '14px', fontFamily: 'monospace', color: '#8892b0' }}>
-                            Student: <strong>{enrollingStudent?.fullName}</strong>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div 
-                            onClick={() => startFingerprintScan(null)}
-                            style={{ 
-                              width: '130px', height: '130px', borderRadius: '50%', background: 'rgba(0,230,118,0.05)', 
-                              border: '2px dashed rgba(0,230,118,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                              cursor: 'pointer', marginBottom: '30px', transition: 'all 0.3s',
-                              boxShadow: 'inset 0 0 20px rgba(0,230,118,0.02)'
-                            }}
-                          >
-                            <svg width="80" height="90" viewBox="0 0 24 28" fill="none" stroke="rgba(0,230,118,0.8)" strokeWidth="1.5" strokeLinecap="round">
-                              <path d="M12 2C6.48 2 2 6.48 2 12C2 13.92 2.55 15.7 3.5 17.2M22 12C22 6.48 17.52 2 12 2" />
-                              <path d="M5.5 19.5C6.75 21 8.5 22 10.5 22.3M18.5 19.5C19.38 18.5 20 17.2 20.3 15.8" />
-                              <path d="M8.5 7.5C10 6.5 12 6.5 13.5 7.5M6.5 11C7 9.5 8.5 8.5 10.5 8.2M15.5 12.5C15 14 13.5 15 11.5 15.3" />
-                              <path d="M10 11C10 11.5 10.5 12 11 12C11.5 12 12 11.5 12 11C12 10.5 11.5 10 11 10C10.5 10 10 10.5 10 11" />
-                            </svg>
-                          </div>
-                          <h3 style={{ color: '#ffffff', margin: '0 0 10px 0', fontSize: '1.5rem', fontWeight: 'bold' }}>
-                            Biometric Sensor Ready
-                          </h3>
-                          <p style={{ color: '#8892b0', fontSize: '14px', maxWidth: '300px', margin: '0 auto 25px', lineHeight: '1.5' }}>
-                            Click the sensor above to simulate a live fingerprint scan of any enrolled student, or click the individual "Scan" buttons on the right.
-                          </p>
-                          <button 
-                            onClick={() => startFingerprintScan(null)}
-                            style={{ 
-                              background: '#00e676', color: '#05050a', border: 'none', padding: '12px 30px', borderRadius: '12px', 
-                              fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s',
-                              boxShadow: '0 4px 15px rgba(0,230,118,0.3)'
-                            }}
-                          >
-                            Scan Next Fingerprint
-                          </button>
-                        </>
-                      )}
-
-                      {/* Diagnostic Log */}
-                      <div style={{ width: '100%', marginTop: '30px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px', textAlign: 'left' }}>
-                        <div style={{ fontSize: '11px', color: '#00e676', fontFamily: 'monospace', fontWeight: 'bold', marginBottom: '8px' }}>BIOMETRIC_LOG</div>
-                        <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '10px', height: '110px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '11px', color: '#8892b0', border: '1px solid rgba(255,255,255,0.05)' }}>
-                          {biometricLog.map((log, index) => (
-                            <div key={index} style={{ marginBottom: '4px', color: log.startsWith('✓') ? '#00e676' : log.startsWith('⚠️') ? '#ff5252' : '#8892b0' }}>{log}</div>
-                          ))}
-                          {biometricLog.length === 0 && (
-                            <div style={{ fontStyle: 'italic', opacity: 0.5 }}>System idle. Ready to match minutiae points.</div>
-                          )}
-                        </div>
-                      </div>
+                  <div style={{ padding: '40px 20px', background: '#0a0f1d', borderRadius: '24px', border: '1px solid rgba(0, 230, 118, 0.2)', textAlign: 'center', color: 'white', maxWidth: '600px', margin: '40px auto', boxShadow: '0 15px 35px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+                    <div style={{ position: 'relative', width: '100px', height: '100px', background: 'rgba(0, 230, 118, 0.05)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px dashed rgba(0, 230, 118, 0.3)', animation: 'pulseGreen 2s infinite' }}>
+                      <svg width="60" height="70" viewBox="0 0 24 28" fill="none" stroke="#00e676" strokeWidth="1.5" strokeLinecap="round">
+                        <path d="M12 2C6.48 2 2 6.48 2 12C2 13.92 2.55 15.7 3.5 17.2M22 12C22 6.48 17.52 2 12 2" />
+                        <path d="M5.5 19.5C6.75 21 8.5 22 10.5 22.3M18.5 19.5C19.38 18.5 20 17.2 20.3 15.8" />
+                        <path d="M8.5 7.5C10 6.5 12 6.5 13.5 7.5M6.5 11C7 9.5 8.5 8.5 10.5 8.2M15.5 12.5C15 14 13.5 15 11.5 15.3" />
+                        <path d="M10 11C10 11.5 10.5 12 11 12C11.5 12 12 11.5 12 11C12 10.5 11.5 10 11 10C10.5 10 10 10.5 10 11" />
+                      </svg>
                     </div>
-
-                    {/* Right Column - Biometric Roster */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                      <div style={{ background: '#fff', borderRadius: '20px', padding: '25px', border: '1px solid #edf2f7', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px' }}>
-                          <div>
-                            <h4 style={{ margin: 0, color: '#1e293b', fontSize: '1.2rem', fontWeight: 'bold' }}>Biometric Roster</h4>
-                            <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px' }}>Total Class Size: {filteredBySemester.length} Students</p>
-                          </div>
-                          <div style={{ display: 'flex', gap: '15px' }}>
-                            <span style={{ fontSize: '13px', color: '#2e7d32', fontWeight: 'bold' }}>
-                              ✓ Present: {Object.values(attendanceMarks).filter(s => s === 'Present').length}
-                            </span>
-                            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold' }}>
-                              ✗ Absent: {filteredBySemester.length - Object.values(attendanceMarks).filter(s => s === 'Present').length}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Student Biometric List */}
-                        <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }} className="custom-scrollbar">
-                          {filteredBySemester.map(s => {
-                            const isPresent = attendanceMarks[s.id] === 'Present';
-                            const hasFingerprint = s.enrolledFingerprint === 'Active';
-                            
-                            return (
-                              <div 
-                                key={s.id}
-                                style={{ 
-                                  display: 'flex', alignItems: 'center', gap: '15px', padding: '12px 15px', 
-                                  borderRadius: '14px', background: isPresent ? '#f4fbf7' : '#f8fafc',
-                                  border: isPresent ? '1px solid #c8e6c9' : '1px solid #f1f5f9',
-                                  transition: 'all 0.2s'
-                                }}
-                              >
-                                <img 
-                                  src={s.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.fullName)}&background=8a2c20&color=fff`} 
-                                  style={{ width: '40px', height: '40px', borderRadius: '10px', objectFit: 'cover' }} 
-                                  alt={s.fullName} 
-                                />
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e293b' }}>{s.fullName}</div>
-                                  <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                    <span>{s.enrollmentNumber}</span>
-                                    <span>•</span>
-                                    <span style={{ color: hasFingerprint ? '#2e7d32' : '#e53935', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                      {hasFingerprint ? '👆 Registered' : '⚠️ Missing'}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div style={{ display: 'flex', gap: '10px' }}>
-                                  {!hasFingerprint ? (
-                                    <button 
-                                      onClick={() => startFingerprintEnrollment(s)}
-                                      disabled={isFingerScanning || isFingerEnrolling}
-                                      style={{ 
-                                        background: '#2196f3', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '8px',
-                                        fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
-                                      }}
-                                    >
-                                      <span>🔑</span> Register
-                                    </button>
-                                  ) : isPresent ? (
-                                    <span style={{ background: '#2e7d32', color: 'white', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 'bold' }}>
-                                      ✓ Present
-                                    </span>
-                                  ) : (
-                                    <button 
-                                      onClick={() => startFingerprintScan(s)}
-                                      disabled={isFingerScanning || isFingerEnrolling}
-                                      style={{ 
-                                        background: '#00e676', color: '#0a0f1d', border: 'none', padding: '6px 12px', borderRadius: '8px',
-                                        fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
-                                      }}
-                                    >
-                                      <span>👆</span> Scan
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {filteredBySemester.length === 0 && (
-                            <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontStyle: 'italic' }}>
-                              No students found. Adjust semester/course filter.
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                    <span style={{ background: 'rgba(230, 126, 34, 0.15)', color: '#e67e22', border: '1px solid #e67e22', borderRadius: '20px', padding: '6px 16px', fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>Coming Soon</span>
+                    <h3 style={{ fontSize: '24px', margin: 0, color: 'white', fontWeight: 'bold' }}>Teacher-Side Biometric Scanning</h3>
+                    <p style={{ color: '#8892b0', fontSize: '15px', lineHeight: '1.6', maxWidth: '480px', margin: 0 }}>
+                      We are currently implementing real-time WebUSB device interfaces for administrative fingerprint devices. 
+                      Please use the <strong>Smart Scanner (Face)</strong> or <strong>Manual Mode</strong> to record attendance for today's session.
+                    </p>
                   </div>
                 ) : (
                   <div style={{ textAlign: 'center', padding: '80px 40px', background: '#fff', borderRadius: '24px', border: '2px dashed #e2e8f0', margin: '20px 0', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.02)' }}>
