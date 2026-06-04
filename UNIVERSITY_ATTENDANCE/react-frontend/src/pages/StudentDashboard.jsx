@@ -690,13 +690,7 @@ function StudentDashboard() {
                     )}
                   </div>
 
-                  <button 
-                    type="button"
-                    onClick={() => startFingerprintEnrollment(false)}
-                    style={{ background: 'transparent', color: '#00e676', border: '1px solid #00e676', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
-                  >
-                    🖥️ Simulated Scan
-                  </button>
+
                 </>
               ) : null}
 

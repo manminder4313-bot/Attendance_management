@@ -353,15 +353,7 @@ function StudentFingerprintUpload() {
                     )}
                   </div>
 
-                  <hr style={{ border: 'none', borderTop: '1px dashed rgba(255,255,255,0.1)', margin: '10px 0' }} />
 
-                  {/* Fallback Simulator */}
-                  <button 
-                    onClick={() => startFingerprintEnrollment(false)}
-                    style={{ background: 'transparent', color: '#00e676', border: '1px solid #00e676', padding: '12px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
-                  >
-                    🖥️ Simulated Enrollment
-                  </button>
 
                   <button 
                     onClick={() => { setStudent(null); setRollNo(''); setStatus({ text: '', type: '' }); }}
