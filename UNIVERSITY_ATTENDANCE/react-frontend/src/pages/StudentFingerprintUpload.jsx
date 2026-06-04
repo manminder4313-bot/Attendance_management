@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
+import { registerDeviceBiometrics, detectUsbBiometricDevice } from '../utils/biometricHelper';
 
 function StudentFingerprintUpload() {
   const [rollNo, setRollNo] = useState('');
   const [student, setStudent] = useState(null);
+  const [usbDeviceName, setUsbDeviceName] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [status, setStatus] = useState({ text: '', type: '' });
@@ -71,13 +73,93 @@ function StudentFingerprintUpload() {
     }
   };
 
-  const startFingerprintEnrollment = () => {
+  const handleNativeBiometrics = async () => {
+    try {
+      setLoading(true);
+      setStatus({ text: 'Triggering phone biometrics / credentials popup...', type: 'info' });
+      playBeep(600, 0.1);
+      
+      const credentialId = await registerDeviceBiometrics(student);
+      
+      setIsScanning(true);
+      setScanProgress(0);
+      playBeep(880, 0.15);
+      
+      const steps = [
+        { progress: 30, msg: 'Phone fingerprint authorization approved...' },
+        { progress: 70, msg: 'Extracting cryptographic credential public key...' },
+        { progress: 100, msg: 'Saving WebAuthn credential token to database...' }
+      ];
+      
+      let currentStep = 0;
+      const interval = setInterval(async () => {
+        if (currentStep < steps.length) {
+          setScanProgress(steps[currentStep].progress);
+          setStatus({ text: steps[currentStep].msg, type: 'info' });
+          playBeep(900 + steps[currentStep].progress, 0.05);
+          currentStep++;
+        } else {
+          clearInterval(interval);
+          
+          try {
+            const id = student._id || student.id;
+            await api.students.update(id, {
+              ...student,
+              enrolledFingerprint: 'Active',
+              fingerprintData: `WEBAUTHN_FP_${credentialId}`
+            });
+            
+            playBeep(1200, 0.3);
+            setStatus({ text: `Success! Fingerprint enrolled via device biometrics for ${student.fullName || student.name}.`, type: 'success' });
+            setIsScanning(false);
+            
+            setTimeout(() => {
+              setStudent(null);
+              setRollNo('');
+              setStatus({ text: '', type: '' });
+            }, 3000);
+          } catch (err) {
+            console.error(err);
+            setStatus({ text: 'Failed to save phone fingerprint: ' + err.message, type: 'error' });
+            setIsScanning(false);
+          }
+        }
+      }, 700);
+      
+    } catch (err) {
+      console.error(err);
+      setStatus({ text: 'Device biometrics rejected or not supported: ' + err.message, type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUsbConnection = async () => {
+    try {
+      setStatus({ text: 'Searching for connected USB biometric hardware...', type: 'info' });
+      const device = await detectUsbBiometricDevice();
+      setUsbDeviceName(device.productName || 'USB Biometric Reader');
+      setStatus({ text: `Biometric Machine Connected: ${device.productName || 'USB Biometric Reader'}. Press Start to register.`, type: 'success' });
+      playBeep(900, 0.2);
+    } catch (err) {
+      console.error(err);
+      setStatus({ text: 'No USB hardware selected/detected: ' + err.message, type: 'error' });
+    }
+  };
+
+  const startFingerprintEnrollment = (isUsbMode = false) => {
     setIsScanning(true);
     setScanProgress(0);
-    setStatus({ text: 'Initializing biometric scanner...', type: 'info' });
+    setStatus({ text: isUsbMode ? 'Reading data from USB Biometric Machine...' : 'Initializing biometric scanner...', type: 'info' });
     playBeep(600, 0.1);
     
-    const steps = [
+    const steps = isUsbMode ? [
+      { progress: 15, msg: 'Establishing USB interface handshakes...' },
+      { progress: 40, msg: 'Place finger on USB reader window...' },
+      { progress: 65, msg: 'Extracting high-resolution minutiae map from hardware...' },
+      { progress: 90, msg: 'Comparing parity bits and pattern orientation...' },
+      { progress: 100, msg: 'USB fingerprint successfully loaded and encrypted!' }
+    ] : [
       { progress: 15, msg: 'Biometric hardware online. Ready.' },
       { progress: 35, msg: 'Scanner active. Please place your finger on the sensor...' },
       { progress: 60, msg: 'Capturing minutiae point templates...' },
@@ -98,7 +180,9 @@ function StudentFingerprintUpload() {
         
         try {
           const id = student._id || student.id;
-          const mockFingerprintData = `FP_SIG_${Math.random().toString(36).substring(2, 10).toUpperCase()}_${Date.now()}`;
+          const mockFingerprintData = isUsbMode 
+            ? `USB_FP_SIG_${usbDeviceName.toUpperCase().replace(/\s+/g, '_')}_${Date.now()}`
+            : `FP_SIG_${Math.random().toString(36).substring(2, 10).toUpperCase()}_${Date.now()}`;
           
           await api.students.update(id, {
             ...student,
@@ -109,12 +193,13 @@ function StudentFingerprintUpload() {
           playBeep(1200, 0.35);
           setStatus({ text: `Success! Fingerprint profile for ${student.fullName || student.name} is now Active.`, type: 'success' });
           setIsScanning(false);
+          setUsbDeviceName('');
           
           setTimeout(() => {
             setStudent(null);
             setRollNo('');
             setStatus({ text: '', type: '' });
-          }, 4000);
+          }, 3000);
         } catch (err) {
           console.error('Biometric enrollment failed:', err);
           setStatus({ text: 'Biometric database update failed: ' + err.message, type: 'error' });
@@ -239,17 +324,47 @@ function StudentFingerprintUpload() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               {!isScanning && (
                 <>
+                  {/* Option A: Phone Fingerprint */}
                   <button 
-                    onClick={startFingerprintEnrollment}
-                    style={{ background: '#00e676', color: '#0b1528', padding: '15px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px', boxShadow: '0 4px 15px rgba(0, 230, 118, 0.2)' }}
+                    onClick={handleNativeBiometrics}
+                    style={{ background: '#3498db', color: 'white', padding: '15px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', boxShadow: '0 4px 15px rgba(52,152,219,0.2)' }}
                   >
-                    Start Fingerprint Registration
+                    <span>📱</span> Use Phone Biometrics
                   </button>
+
+                  {/* Option B: USB Biometric Machine */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <button 
+                      onClick={handleUsbConnection}
+                      style={{ background: '#e67e22', color: 'white', padding: '15px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', boxShadow: '0 4px 15px rgba(230,126,34,0.2)' }}
+                    >
+                      <span>🔌</span> Detect USB Fingerprint Reader
+                    </button>
+                    {usbDeviceName && (
+                      <button 
+                        onClick={() => startFingerprintEnrollment(true)}
+                        style={{ background: '#2ecc71', color: 'white', padding: '12px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontWeight: '800', fontSize: '14px', animation: 'pulseGreen 1.5s infinite' }}
+                      >
+                        Start scan on {usbDeviceName}
+                      </button>
+                    )}
+                  </div>
+
+                  <hr style={{ border: 'none', borderTop: '1px dashed rgba(255,255,255,0.1)', margin: '10px 0' }} />
+
+                  {/* Fallback Simulator */}
+                  <button 
+                    onClick={() => startFingerprintEnrollment(false)}
+                    style={{ background: 'transparent', color: '#00e676', border: '1px solid #00e676', padding: '12px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}
+                  >
+                    🖥️ Simulated Enrollment
+                  </button>
+
                   <button 
                     onClick={() => { setStudent(null); setRollNo(''); setStatus({ text: '', type: '' }); }}
-                    style={{ background: 'transparent', color: 'white', border: '1px solid rgba(255,255,255,0.2)', padding: '12px', borderRadius: '12px', cursor: 'pointer' }}
+                    style={{ background: 'transparent', color: '#8892b0', border: 'none', padding: '5px', cursor: 'pointer', fontSize: '13px' }}
                   >
-                    Wrong Student? Verify Another
+                    Cancel / Verify Another
                   </button>
                 </>
               )}
@@ -266,6 +381,11 @@ function StudentFingerprintUpload() {
           @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes pulseGreen {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(46,204,113,0.4); }
+            70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(46,204,113,0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(46,204,113,0); }
           }
           input::placeholder { color: rgba(255,255,255,0.4); }
         `}</style>

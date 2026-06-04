@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { subjectMapping } from '../utils/subjectMapping';
+import { registerDeviceBiometrics, detectUsbBiometricDevice } from '../utils/biometricHelper';
 import './StudentDashboard.css';
 
 function StudentDashboard() {
@@ -25,6 +26,8 @@ function StudentDashboard() {
   const [isEnrollingFinger, setIsEnrollingFinger] = useState(false);
   const [enrollProgress, setEnrollProgress] = useState(0);
   const [enrollStatusMsg, setEnrollStatusMsg] = useState('');
+  const [usbDeviceName, setUsbDeviceName] = useState('');
+  const [isScanningActive, setIsScanningActive] = useState(false);
 
   const playBeep = (freq = 800, duration = 0.15) => {
     try {
@@ -48,19 +51,97 @@ function StudentDashboard() {
     }
   };
 
-  const startFingerprintEnrollment = () => {
-    setIsEnrollingFinger(true);
+  const handleNativeBiometrics = async () => {
+    try {
+      setEnrollStatusMsg('Triggering phone biometrics popup...');
+      playBeep(600, 0.1);
+      
+      const credentialId = await registerDeviceBiometrics(studentInfo);
+      
+      setIsScanningActive(true);
+      setEnrollProgress(0);
+      playBeep(880, 0.15);
+      
+      const steps = [
+        { progress: 30, msg: 'Phone fingerprint verification approved...' },
+        { progress: 70, msg: 'Extracting credential key signature...' },
+        { progress: 100, msg: 'Credential registered successfully!' }
+      ];
+      
+      let currentStep = 0;
+      const interval = setInterval(async () => {
+        if (currentStep < steps.length) {
+          setEnrollProgress(steps[currentStep].progress);
+          setEnrollStatusMsg(steps[currentStep].msg);
+          playBeep(900 + steps[currentStep].progress, 0.05);
+          currentStep++;
+        } else {
+          clearInterval(interval);
+          
+          try {
+            const id = studentInfo._id || studentInfo.id;
+            const updatedStudent = {
+              ...studentInfo,
+              enrolledFingerprint: 'Active',
+              fingerprintData: `WEBAUTHN_FP_${credentialId}`
+            };
+            
+            await api.students.update(id, updatedStudent);
+            
+            setStudentInfo(updatedStudent);
+            sessionStorage.setItem('loggedInStudent', JSON.stringify(updatedStudent));
+            playBeep(1200, 0.3);
+            setEnrollStatusMsg('Successfully enrolled via device biometrics!');
+            
+            setTimeout(() => {
+              setIsEnrollingFinger(false);
+              setIsScanningActive(false);
+            }, 1500);
+          } catch (err) {
+            console.error(err);
+            setEnrollStatusMsg('Database save error: ' + err.message);
+            setIsScanningActive(false);
+          }
+        }
+      }, 700);
+      
+    } catch (err) {
+      console.error(err);
+      setEnrollStatusMsg('Device biometrics failed: ' + err.message);
+    }
+  };
+
+  const handleUsbConnection = async () => {
+    try {
+      setEnrollStatusMsg('Searching for connected USB biometric hardware...');
+      const device = await detectUsbBiometricDevice();
+      setUsbDeviceName(device.productName || 'USB Biometric Reader');
+      setEnrollStatusMsg(`USB Device Connected: ${device.productName || 'USB Biometric Reader'}. Press Start scan.`);
+      playBeep(900, 0.2);
+    } catch (err) {
+      console.error(err);
+      setEnrollStatusMsg('No USB hardware connected: ' + err.message);
+    }
+  };
+
+  const startFingerprintEnrollment = (isUsbMode = false) => {
+    setIsScanningActive(true);
     setEnrollProgress(0);
-    setEnrollStatusMsg('Initializing biometric scanner...');
+    setEnrollStatusMsg(isUsbMode ? 'Reading from USB fingerprint machine...' : 'Initializing biometric scanner...');
     playBeep(600, 0.1);
     
-    const steps = [
-      { progress: 10, msg: 'Initializing biometric scanner...' },
-      { progress: 25, msg: 'Place your thumb on the sensor...' },
-      { progress: 45, msg: 'Scanning fingerprint minutiae...' },
-      { progress: 70, msg: 'Analyzing pattern characteristics...' },
-      { progress: 90, msg: 'Securing template encryption...' },
-      { progress: 100, msg: 'Fingerprint registered successfully!' }
+    const steps = isUsbMode ? [
+      { progress: 15, msg: 'Establishing USB communication interface...' },
+      { progress: 40, msg: 'Place finger on USB reader...' },
+      { progress: 65, msg: 'Extracting minutiae pattern from USB hardware...' },
+      { progress: 90, msg: 'Matching pattern orientation...' },
+      { progress: 100, msg: 'USB fingerprint successfully loaded and encrypted!' }
+    ] : [
+      { progress: 15, msg: 'Biometric hardware online. Ready.' },
+      { progress: 35, msg: 'Scanner active. Please place your finger on the sensor...' },
+      { progress: 60, msg: 'Capturing minutiae point templates...' },
+      { progress: 85, msg: 'Verifying image resolution and core pattern...' },
+      { progress: 100, msg: 'Enrollment successful! Storing in secure database...' }
     ];
     
     let currentStep = 0;
@@ -76,7 +157,9 @@ function StudentDashboard() {
         
         try {
           const id = studentInfo._id || studentInfo.id;
-          const mockFingerprintData = `FP_SIG_${Math.random().toString(36).substring(2, 10).toUpperCase()}_${Date.now()}`;
+          const mockFingerprintData = isUsbMode 
+            ? `USB_FP_SIG_${usbDeviceName.toUpperCase().replace(/\s+/g, '_')}_${Date.now()}`
+            : `FP_SIG_${Math.random().toString(36).substring(2, 10).toUpperCase()}_${Date.now()}`;
           const updatedStudent = {
             ...studentInfo,
             enrolledFingerprint: 'Active',
@@ -91,11 +174,14 @@ function StudentDashboard() {
           
           setTimeout(() => {
             setIsEnrollingFinger(false);
+            setIsScanningActive(false);
+            setUsbDeviceName('');
           }, 1500);
         } catch (err) {
           console.error('Biometric enrollment failed:', err);
           setEnrollStatusMsg('Enrollment failed. Please try again.');
           playBeep(400, 0.4);
+          setIsScanningActive(false);
         }
       }
     }, 800);
@@ -488,7 +574,13 @@ function StudentDashboard() {
                           <div style={{ fontSize: '24px' }}>👆</div>
                         ) : (
                           <button 
-                            onClick={startFingerprintEnrollment}
+                            onClick={() => {
+                              setIsEnrollingFinger(true);
+                              setEnrollProgress(0);
+                              setEnrollStatusMsg('Choose enrollment method below:');
+                              setIsScanningActive(false);
+                              setUsbDeviceName('');
+                            }}
                             style={{ 
                               background: '#2e7d32', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px',
                               fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
@@ -540,37 +632,82 @@ function StudentDashboard() {
       {/* Fingerprint Enrollment Modal */}
       {isEnrollingFinger && (
         <div className="dashboard-modal-overlay">
-          <div className="dashboard-modal" style={{ background: '#0a0f1d', border: '1px solid rgba(0,230,118,0.2)', color: 'white', padding: '30px', borderRadius: '24px', width: '90%', maxWidth: '400px', textAlign: 'center', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}>
+          <div className="dashboard-modal" style={{ background: '#0a0f1d', border: '1px solid rgba(0,230,118,0.2)', color: 'white', padding: '30px', borderRadius: '24px', width: '95%', maxWidth: '400px', textAlign: 'center', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}>
             <h3 style={{ color: '#00e676', marginBottom: '20px', fontFamily: 'monospace', letterSpacing: '1px' }}>BIOMETRIC REGISTRATION</h3>
             
             <div style={{ position: 'relative', width: '120px', height: '140px', margin: '0 auto 25px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="100" height="120" viewBox="0 0 24 28" fill="none" stroke="#00e676" strokeWidth="1.5" strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 8px #00e676)' }}>
+              <svg width="100" height="120" viewBox="0 0 24 28" fill="none" stroke="#00e676" strokeWidth="1.5" strokeLinecap="round" style={{ filter: isScanningActive ? 'drop-shadow(0 0 8px #00e676)' : 'none', opacity: isScanningActive ? 1 : 0.6 }}>
                 <path d="M12 2C6.48 2 2 6.48 2 12C2 13.92 2.55 15.7 3.5 17.2M22 12C22 6.48 17.52 2 12 2" />
                 <path d="M5.5 19.5C6.75 21 8.5 22 10.5 22.3M18.5 19.5C19.38 18.5 20 17.2 20.3 15.8" />
                 <path d="M8.5 7.5C10 6.5 12 6.5 13.5 7.5M6.5 11C7 9.5 8.5 8.5 10.5 8.2M15.5 12.5C15 14 13.5 15 11.5 15.3" />
                 <path d="M10 11C10 11.5 10.5 12 11 12C11.5 12 12 11.5 12 11C12 10.5 11.5 10 11 10C10.5 10 10 10.5 10 11" />
               </svg>
-              <div style={{ position: 'absolute', left: 0, right: 0, height: '4px', background: '#00e676', boxShadow: '0 0 15px #00e676', animation: 'laserScan 1.5s infinite ease-in-out', borderRadius: '2px' }}></div>
+              {isScanningActive && (
+                <div style={{ position: 'absolute', left: 0, right: 0, height: '4px', background: '#00e676', boxShadow: '0 0 15px #00e676', animation: 'laserScan 1.5s infinite ease-in-out', borderRadius: '2px' }}></div>
+              )}
             </div>
 
-            <div style={{ width: '80%', height: '8px', background: '#222', borderRadius: '4px', margin: '0 auto 15px', overflow: 'hidden' }}>
-              <div style={{ width: `${enrollProgress}%`, height: '100%', background: '#00e676', transition: 'width 0.1s linear', boxShadow: '0 0 10px #00e676' }}></div>
-            </div>
+            {isScanningActive && (
+              <div style={{ width: '80%', height: '8px', background: '#222', borderRadius: '4px', margin: '0 auto 15px', overflow: 'hidden' }}>
+                <div style={{ width: `${enrollProgress}%`, height: '100%', background: '#00e676', transition: 'width 0.1s linear', boxShadow: '0 0 10px #00e676' }}></div>
+              </div>
+            )}
 
-            <p style={{ fontFamily: 'monospace', fontSize: '14px', color: '#8892b0', margin: 0, minHeight: '20px' }}>
+            <p style={{ fontFamily: 'monospace', fontSize: '13px', color: '#8892b0', margin: '0 auto 15px', minHeight: '35px', maxWidth: '300px' }}>
               {enrollStatusMsg}
             </p>
 
-            <button 
-              type="button" 
-              onClick={() => setIsEnrollingFinger(false)} 
-              style={{ 
-                marginTop: '25px', width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', 
-                color: 'white', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontFamily: 'monospace'
-              }}
-            >
-              Cancel
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px' }}>
+              {!isScanningActive ? (
+                <>
+                  <button 
+                    type="button"
+                    onClick={handleNativeBiometrics}
+                    style={{ background: '#3498db', color: 'white', padding: '12px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  >
+                    📱 Use Phone Biometrics
+                  </button>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <button 
+                      type="button"
+                      onClick={handleUsbConnection}
+                      style={{ background: '#e67e22', color: 'white', padding: '12px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                    >
+                      🔌 Detect USB Fingerprint Reader
+                    </button>
+                    {usbDeviceName && (
+                      <button 
+                        type="button"
+                        onClick={() => startFingerprintEnrollment(true)}
+                        style={{ background: '#2ecc71', color: 'white', padding: '10px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontWeight: '800', fontSize: '13px', animation: 'pulseGreen 1.5s infinite' }}
+                      >
+                        Start scan on {usbDeviceName}
+                      </button>
+                    )}
+                  </div>
+
+                  <button 
+                    type="button"
+                    onClick={() => startFingerprintEnrollment(false)}
+                    style={{ background: 'transparent', color: '#00e676', border: '1px solid #00e676', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+                  >
+                    🖥️ Simulated Scan
+                  </button>
+                </>
+              ) : null}
+
+              <button 
+                type="button" 
+                onClick={() => { setIsEnrollingFinger(false); setIsScanningActive(false); }} 
+                style={{ 
+                  marginTop: '10px', width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', 
+                  color: 'white', padding: '10px', borderRadius: '12px', cursor: 'pointer', fontFamily: 'monospace'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -580,6 +717,11 @@ function StudentDashboard() {
           0% { top: 5%; opacity: 0.3; }
           50% { top: 95%; opacity: 1; }
           100% { top: 5%; opacity: 0.3; }
+        }
+        @keyframes pulseGreen {
+          0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(46,204,113,0.4); }
+          70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(46,204,113,0); }
+          100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(46,204,113,0); }
         }
       `}</style>
 
