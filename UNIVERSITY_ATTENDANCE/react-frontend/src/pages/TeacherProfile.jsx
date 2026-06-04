@@ -1406,27 +1406,38 @@ function TeacherProfile() {
                      <span style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                    </div>
                    
-                   <div style={{ display: 'flex', background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '4px 4px 4px 15px', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '700', marginRight: '10px' }}>ENROLL LINK:</span>
-                    <input 
-                      type="text" 
-                      placeholder="Roll No (Opt)" 
-                      value={targetRollNo}
-                      onChange={(e) => setTargetRollNo(e.target.value)}
-                      style={{ border: 'none', outline: 'none', width: '100px', fontSize: '13px', fontWeight: '700', color: '#660000', background: 'transparent' }}
-                    />
-                    <button 
-                      onClick={() => {
-                          const url = `${window.location.origin}/upload-face${targetRollNo ? `?rollNo=${targetRollNo}` : ''}`;
-                          navigator.clipboard.writeText(url);
-                          setSaveStatus({ text: 'Copied!', type: 'success' });
-                          setTimeout(() => setSaveStatus({ text: '', type: '' }), 2000);
-                      }}
-                      style={{ background: '#f1f5f9', color: '#1e293b', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: '800', padding: '8px 15px', borderRadius: '8px', marginLeft: '5px', transition: 'all 0.2s' }}
-                    >
-                      COPY 🔗
-                    </button>
-                  </div>
+                   <div style={{ display: 'flex', background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: '12px', padding: '4px 4px 4px 15px', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', gap: '5px' }}>
+                     <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '700' }}>ROLL NO:</span>
+                     <input 
+                       type="text" 
+                       placeholder="Optional" 
+                       value={targetRollNo}
+                       onChange={(e) => setTargetRollNo(e.target.value)}
+                       style={{ border: 'none', outline: 'none', width: '70px', fontSize: '13px', fontWeight: '700', color: '#660000', background: 'transparent' }}
+                     />
+                     <button 
+                       onClick={() => {
+                           const url = `${window.location.origin}/upload-face${targetRollNo ? `?rollNo=${targetRollNo}` : ''}`;
+                           navigator.clipboard.writeText(url);
+                           setSaveStatus({ text: 'Face link copied!', type: 'success' });
+                           setTimeout(() => setSaveStatus({ text: '', type: '' }), 2000);
+                       }}
+                       style={{ background: '#f1f5f9', color: '#1e293b', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: '800', padding: '8px 12px', borderRadius: '8px', transition: 'all 0.2s' }}
+                     >
+                       COPY FACE 📸
+                     </button>
+                     <button 
+                       onClick={() => {
+                           const url = `${window.location.origin}/upload-fingerprint${targetRollNo ? `?rollNo=${targetRollNo}` : ''}`;
+                           navigator.clipboard.writeText(url);
+                           setSaveStatus({ text: 'Fingerprint link copied!', type: 'success' });
+                           setTimeout(() => setSaveStatus({ text: '', type: '' }), 2000);
+                       }}
+                       style={{ background: '#00e676', color: '#0b1528', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: '800', padding: '8px 12px', borderRadius: '8px', transition: 'all 0.2s' }}
+                     >
+                       COPY FINGER 👆
+                     </button>
+                   </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '15px' }}>

@@ -12,6 +12,7 @@ import FormStudent from './pages/from_student';
 import FormDepartment from './pages/from_department';
 import FormClerk from './pages/from_clerk';
 import StudentFaceUpload from './pages/StudentFaceUpload';
+import StudentFingerprintUpload from './pages/StudentFingerprintUpload';
 import StudentDashboard from './pages/StudentDashboard';
 import { useLocation } from 'react-router-dom';
 
@@ -35,6 +36,7 @@ function App() {
         <Route path="/department-form" element={<FormDepartment />} />
         <Route path="/clerk-form" element={<FormClerk />} />
         <Route path="/upload-face" element={<StudentFaceUpload />} />
+        <Route path="/upload-fingerprint" element={<StudentFingerprintUpload />} />
         <Route path="/student-dashboard" element={<StudentDashboard />} />
       </Routes>
     </>
