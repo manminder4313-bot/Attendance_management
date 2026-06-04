@@ -1309,7 +1309,7 @@ function TeacherProfile() {
                     <span>📸</span> Smart Scanner
                   </button>
                   <button 
-                    onClick={() => { setMarkingMode('fingerprint'); stopCamera(); }}
+                    onClick={() => { setMarkingMode('fingerprint'); stopCamera(); alert('Fingerprint Scan feature is Coming Soon!'); }}
                     style={{ 
                       padding: '10px 24px', borderRadius: '10px', border: 'none', cursor: 'pointer',
                       background: markingMode === 'fingerprint' ? '#660000' : 'transparent',
@@ -1997,33 +1997,23 @@ function TeacherProfile() {
                 )}
               </div>
             ) : (
-              <div>
-                {(isAttendanceReady || isLoadingStudents) ? (
-                  <div style={{ padding: '40px 20px', background: '#0a0f1d', borderRadius: '24px', border: '1px solid rgba(0, 230, 118, 0.2)', textAlign: 'center', color: 'white', maxWidth: '600px', margin: '40px auto', boxShadow: '0 15px 35px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
-                    <div style={{ position: 'relative', width: '100px', height: '100px', background: 'rgba(0, 230, 118, 0.05)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px dashed rgba(0, 230, 118, 0.3)', animation: 'pulseGreen 2s infinite' }}>
-                      <svg width="60" height="70" viewBox="0 0 24 28" fill="none" stroke="#00e676" strokeWidth="1.5" strokeLinecap="round">
-                        <path d="M12 2C6.48 2 2 6.48 2 12C2 13.92 2.55 15.7 3.5 17.2M22 12C22 6.48 17.52 2 12 2" />
-                        <path d="M5.5 19.5C6.75 21 8.5 22 10.5 22.3M18.5 19.5C19.38 18.5 20 17.2 20.3 15.8" />
-                        <path d="M8.5 7.5C10 6.5 12 6.5 13.5 7.5M6.5 11C7 9.5 8.5 8.5 10.5 8.2M15.5 12.5C15 14 13.5 15 11.5 15.3" />
-                        <path d="M10 11C10 11.5 10.5 12 11 12C11.5 12 12 11.5 12 11C12 10.5 11.5 10 11 10C10.5 10 10 10.5 10 11" />
-                      </svg>
-                    </div>
-                    <span style={{ background: 'rgba(230, 126, 34, 0.15)', color: '#e67e22', border: '1px solid #e67e22', borderRadius: '20px', padding: '6px 16px', fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>Coming Soon</span>
-                    <h3 style={{ fontSize: '24px', margin: 0, color: 'white', fontWeight: 'bold' }}>Teacher-Side Biometric Scanning</h3>
-                    <p style={{ color: '#8892b0', fontSize: '15px', lineHeight: '1.6', maxWidth: '480px', margin: 0 }}>
-                      We are currently implementing real-time WebUSB device interfaces for administrative fingerprint devices. 
-                      Please use the <strong>Smart Scanner (Face)</strong> or <strong>Manual Mode</strong> to record attendance for today's session.
-                    </p>
+              <div style={{ padding: '20px' }}>
+                <div style={{ padding: '40px 20px', background: '#0a0f1d', borderRadius: '24px', border: '1px solid rgba(0, 230, 118, 0.2)', textAlign: 'center', color: 'white', maxWidth: '600px', margin: '40px auto', boxShadow: '0 15px 35px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+                  <div style={{ position: 'relative', width: '100px', height: '100px', background: 'rgba(0, 230, 118, 0.05)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px dashed rgba(0, 230, 118, 0.3)', animation: 'pulseGreen 2s infinite' }}>
+                    <svg width="60" height="70" viewBox="0 0 24 28" fill="none" stroke="#00e676" strokeWidth="1.5" strokeLinecap="round">
+                      <path d="M12 2C6.48 2 2 6.48 2 12C2 13.92 2.55 15.7 3.5 17.2M22 12C22 6.48 17.52 2 12 2" />
+                      <path d="M5.5 19.5C6.75 21 8.5 22 10.5 22.3M18.5 19.5C19.38 18.5 20 17.2 20.3 15.8" />
+                      <path d="M8.5 7.5C10 6.5 12 6.5 13.5 7.5M6.5 11C7 9.5 8.5 8.5 10.5 8.2M15.5 12.5C15 14 13.5 15 11.5 15.3" />
+                      <path d="M10 11C10 11.5 10.5 12 11 12C11.5 12 12 11.5 12 11C12 10.5 11.5 10 11 10C10.5 10 10 10.5 10 11" />
+                    </svg>
                   </div>
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '80px 40px', background: '#fff', borderRadius: '24px', border: '2px dashed #e2e8f0', margin: '20px 0', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.02)' }}>
-                    <div style={{ fontSize: '5rem', marginBottom: '25px', filter: 'grayscale(100%) brightness(1.2)', opacity: 0.5 }}>📋</div>
-                    <h3 style={{ color: '#1e293b', fontSize: '1.8rem', fontWeight: '800', margin: '0 0 10px 0' }}>Data Selection Required</h3>
-                    <p style={{ color: '#64748b', fontSize: '1.1rem', maxWidth: '500px', margin: '0 auto', lineHeight: '1.6' }}>
-                      Please select a <strong>Course</strong>, <strong>Semester</strong> and <strong>Assigned Subject</strong> from the control panel above to load the student biometric scanner.
-                    </p>
-                  </div>
-                )}
+                  <span style={{ background: 'rgba(230, 126, 34, 0.15)', color: '#e67e22', border: '1px solid #e67e22', borderRadius: '20px', padding: '6px 16px', fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>Coming Soon</span>
+                  <h3 style={{ fontSize: '24px', margin: 0, color: 'white', fontWeight: 'bold' }}>Teacher-Side Biometric Scanning</h3>
+                  <p style={{ color: '#8892b0', fontSize: '15px', lineHeight: '1.6', maxWidth: '480px', margin: 0 }}>
+                    We are currently implementing real-time WebUSB device interfaces for administrative fingerprint devices. 
+                    Please use the <strong>Smart Scanner (Face)</strong> or <strong>Manual Mode</strong> to record attendance for today's session.
+                  </p>
+                </div>
               </div>
             )}
           </div>
