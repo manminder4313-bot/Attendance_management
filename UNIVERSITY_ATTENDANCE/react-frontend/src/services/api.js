@@ -13,6 +13,12 @@ const api = {
   students: studentService,
   attendance: attendanceService,
   
+  attendanceDays: {
+    getAll: (dept) => fetchApi(`/attendance-days${dept ? `?department=${encodeURIComponent(dept)}` : ''}`),
+    create: (data) => fetchApi('/attendance-days', { method: 'POST', body: JSON.stringify(data) }),
+    delete: (id) => fetchApi(`/attendance-days/${id}`, { method: 'DELETE' }),
+  },
+  
   // Migration Sync (Optional helper)
   sync: (type, data) => fetchApi('/sync', { 
     method: 'POST', 

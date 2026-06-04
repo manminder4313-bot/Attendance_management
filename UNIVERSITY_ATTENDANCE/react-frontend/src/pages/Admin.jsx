@@ -17,6 +17,11 @@ function Admin() {
   const [departmentSubmissions, setDepartmentSubmissions] = useState([]);
   const [adminSubmissions, setAdminSubmissions] = useState([]);
   const [activeTab, setActiveTab] = useState('students');
+  const [attendanceDaysList, setAttendanceDaysList] = useState([]);
+  const [newDayDate, setNewDayDate] = useState('');
+  const [newDayStatus, setNewDayStatus] = useState('off');
+  const [newDayNotice, setNewDayNotice] = useState('');
+  const [newDayDept, setNewDayDept] = useState('All');
   const [departmentFilter, setDepartmentFilter] = useState('All');
   const [studentDeptFilter, setStudentDeptFilter] = useState('');
   const [courseFilter, setCourseFilter] = useState('');
@@ -245,12 +250,13 @@ function Admin() {
   async function loadSubmissions() {
     setIsLoading(true);
     try {
-      const [teachers, students, depts, admins, recs] = await Promise.all([
+      const [teachers, students, depts, admins, recs, attDays] = await Promise.all([
         api.teachers.getAll(),
         api.students.getAll(),
         api.departments.getAll(),
         api.admins.getAll(),
-        api.attendance.getAll()
+        api.attendance.getAll(),
+        api.attendanceDays.getAll(isDepartmentLoggedIn ? roleDepartmentData?.department : null)
       ]);
 
       setSubmissions(teachers.map(t => ({ ...t, id: t._id || t.id })));
@@ -262,12 +268,56 @@ function Admin() {
         id: r._id || r.id,
         dateDisplay: r.date ? formatDate(r.date) : 'N/A'
       })));
+      setAttendanceDaysList(attDays || []);
 
       console.log(`📊 Data Loaded: ${teachers.length} Teachers, ${students.length} Students, ${depts.length} Departments`);
     } catch (err) {
       console.error('Error loading data from MongoDB:', err);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  const handleAddAttendanceDay = async (e) => {
+    e.preventDefault();
+    if (!newDayDate || !newDayNotice) {
+      alert("Please select a date and enter a notice.");
+      return;
+    }
+    const payload = {
+      date: newDayDate,
+      status: newDayStatus,
+      notice: newDayNotice,
+      department: isDepartmentLoggedIn ? roleDepartmentData.department : newDayDept,
+      createdBy: isDepartmentLoggedIn ? roleDepartmentData.headName : adminCreds?.fullName || 'Admin',
+      role: isAdminLoggedIn ? 'admin' : (isClerkLoggedIn ? 'clerk' : 'hod')
+    };
+
+    try {
+      await api.attendanceDays.create(payload);
+      alert("Day configuration saved successfully!");
+      setNewDayDate('');
+      setNewDayNotice('');
+      
+      const updatedDays = await api.attendanceDays.getAll(isDepartmentLoggedIn ? roleDepartmentData?.department : null);
+      setAttendanceDaysList(updatedDays);
+    } catch (err) {
+      console.error("Failed to add attendance day:", err);
+      alert("Error saving day configuration: " + err.message);
+    }
+  };
+
+  const handleDeleteAttendanceDay = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this configuration?")) return;
+    try {
+      await api.attendanceDays.delete(id);
+      alert("Day configuration deleted.");
+      
+      const updatedDays = await api.attendanceDays.getAll(isDepartmentLoggedIn ? roleDepartmentData?.department : null);
+      setAttendanceDaysList(updatedDays);
+    } catch (err) {
+      console.error("Failed to delete attendance day:", err);
+      alert("Error deleting day configuration.");
     }
   };
 
@@ -586,6 +636,29 @@ function Admin() {
         </div>
       </div>
 
+      {/* Holiday / Day Off Alerts Banner */}
+      {attendanceDaysList && attendanceDaysList.length > 0 && (
+        <div style={{
+          background: '#fffbeb',
+          borderLeft: '6px solid #d97706',
+          padding: '15px 20px',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.05)'
+        }}>
+          <h4 style={{ margin: '0 0 8px 0', color: '#b45309', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px' }}>
+            <span>⚠️</span> Active Calendar Overrides (Holidays / Special Working Days)
+          </h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '14px', color: '#78350f' }}>
+            {attendanceDaysList.slice(0, 3).map(day => (
+              <div key={day._id || day.id}>
+                📅 <strong>{formatDate(day.date)}</strong>: Set as <strong style={{ color: day.status === 'off' ? '#dc2626' : '#16a34a' }}>{day.status.toUpperCase() === 'OFF' ? 'OFF (Holiday)' : 'ON (Working Day)'}</strong> (Notice: <em>{day.notice}</em>) for department <strong>{day.department}</strong> (Updated by {day.createdBy})
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="admin-tabs-container">
         <div className="admin-tabs">
           <button
@@ -626,6 +699,11 @@ function Admin() {
               Clerk Submissions
             </button>
           )}
+          <button
+            onClick={() => { setActiveTab('attendance_days'); setSelectedIds([]); setIsDeleteMode(false); }}
+            style={{ padding: '10px 20px', border: 'none', background: 'none', borderBottom: activeTab === 'attendance_days' ? '3px solid var(--primary)' : 'none', color: activeTab === 'attendance_days' ? 'var(--primary)' : '#666', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>
+            Day Off/On Manager
+          </button>
         </div>
 
         <div className="admin-filters">
@@ -690,7 +768,7 @@ function Admin() {
             <p style={{ color: '#666', margin: 0 }}>Please select {!isDepartmentLoggedIn && !studentDeptFilter ? 'a Department, ' : ''}a <strong>Course</strong> and <strong>Semester</strong> to view the student list.</p>
           </div>
         ) : (
-          ((activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? hodSubmissions : activeTab === 'clerks' ? baseClerks : adminSubmissions).length === 0 && !isLoading) ? (
+          (((activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? hodSubmissions : activeTab === 'clerks' ? baseClerks : adminSubmissions).length === 0 && !isLoading) && activeTab !== 'attendance_days') ? (
             <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-light)', fontStyle: 'italic' }}>
               No {activeTab} submissions found.
             </div>
@@ -978,6 +1056,142 @@ function Admin() {
                   ))}
                 </tbody>
               </table>
+            ) : activeTab === 'attendance_days' ? (
+              <div style={{ padding: '30px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px' }}>
+                  {/* Create rule Form */}
+                  <div style={{ background: '#f8f9fa', padding: '25px', borderRadius: '15px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+                    <h3 style={{ color: 'var(--primary)', marginBottom: '20px', marginTop: 0 }}>Configure Day Off/On Status</h3>
+                    <form onSubmit={handleAddAttendanceDay}>
+                      <div style={{ marginBottom: '15px' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '14px', color: '#444' }}>Select Date</label>
+                        <input
+                          type="date"
+                          value={newDayDate}
+                          onChange={(e) => setNewDayDate(e.target.value)}
+                          style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none' }}
+                          required
+                        />
+                      </div>
+                      
+                      <div style={{ marginBottom: '15px' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '14px', color: '#444' }}>Status</label>
+                        <select
+                          value={newDayStatus}
+                          onChange={(e) => setNewDayStatus(e.target.value)}
+                          style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none', background: 'white' }}
+                        >
+                          <option value="off">OFF (Holiday / Day Off)</option>
+                          <option value="on">ON (Force Working Day)</option>
+                        </select>
+                      </div>
+
+                      {!isDepartmentLoggedIn && (
+                        <div style={{ marginBottom: '15px' }}>
+                          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '14px', color: '#444' }}>Apply To Department</label>
+                          <select
+                            value={newDayDept}
+                            onChange={(e) => setNewDayDept(e.target.value)}
+                            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none', background: 'white' }}
+                          >
+                            <option value="All">All Departments (Campus-wide)</option>
+                            {departments.map(dept => (
+                              <option key={dept} value={dept}>{dept}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {isDepartmentLoggedIn && (
+                        <div style={{ marginBottom: '15px' }}>
+                          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '14px', color: '#888' }}>Department (Auto-set)</label>
+                          <input
+                            type="text"
+                            value={roleDepartmentData?.department}
+                            disabled
+                            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', background: '#eee', color: '#666' }}
+                          />
+                        </div>
+                      )}
+
+                      <div style={{ marginBottom: '25px' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '14px', color: '#444' }}>Notice / Proof Description</label>
+                        <textarea
+                          placeholder="e.g. Gazetted Holiday, Institutional Break, or Midterm special schedule details."
+                          value={newDayNotice}
+                          onChange={(e) => setNewDayNotice(e.target.value)}
+                          style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none', height: '100px', resize: 'vertical' }}
+                          required
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        style={{ width: '100%', padding: '12px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        Save Configuration
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* List of rules */}
+                  <div style={{ background: 'white', padding: '25px', borderRadius: '15px', border: '1px solid #eee' }}>
+                    <h3 style={{ color: '#333', marginBottom: '20px', marginTop: 0 }}>Configured Days</h3>
+                    <div style={{ maxHeight: '450px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                      {attendanceDaysList.length === 0 ? (
+                        <p style={{ color: '#bbb', fontStyle: 'italic', textAlign: 'center', padding: '50px 0' }}>No days configured yet.</p>
+                      ) : (
+                        attendanceDaysList.map((day) => (
+                          <div
+                            key={day._id || day.id}
+                            style={{
+                              padding: '15px',
+                              borderRadius: '10px',
+                              borderLeft: `5px solid ${day.status === 'off' ? '#e74c3c' : '#2ecc71'}`,
+                              background: '#fcfcfc',
+                              boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            <div style={{ flex: 1, paddingRight: '15px' }}>
+                              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                <span style={{ fontWeight: 'bold', fontSize: '16px', color: '#2c3e50' }}>{formatDate(day.date)}</span>
+                                <span style={{
+                                  fontSize: '11px',
+                                  padding: '2px 8px',
+                                  borderRadius: '20px',
+                                  fontWeight: 'bold',
+                                  background: day.status === 'off' ? '#fde8e8' : '#e1f7eb',
+                                  color: day.status === 'off' ? '#e74c3c' : '#2ecc71'
+                                }}>
+                                  {day.status === 'off' ? 'OFF (Holiday)' : 'ON (Work Day)'}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '13px', color: '#7f8c8d', marginTop: '6px' }}>
+                                <strong>Notice:</strong> {day.notice}
+                              </div>
+                              <div style={{ fontSize: '11px', color: '#95a5a6', marginTop: '4px' }}>
+                                Dept: {day.department} | Created By: {day.createdBy} ({day.role?.toUpperCase()})
+                              </div>
+                            </div>
+                            <div>
+                              <button
+                                onClick={() => handleDeleteAttendanceDay(day._id || day.id)}
+                                style={{ background: '#fee2e2', color: '#ef4444', border: 'none', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}
+                                title="Delete Configuration"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : activeTab === 'attendance_stats' ? (
               <div style={{ padding: '30px' }}>
                 {/* Filter Selection Panel */}

@@ -16,6 +16,7 @@ import Teacher from './models/Teacher.js';
 import Student from './models/Student.js';
 import Department from './models/Department.js';
 import Attendance from './models/Attendance.js';
+import AttendanceDay from './models/AttendanceDay.js';
 
 dotenv.config();
 
@@ -362,6 +363,50 @@ app.post('/api/login', async (req, res) => {
 
     res.status(401).json({ message: 'Invalid credentials' });
 
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ATTENDANCE DAYS (Holidays / Force working days)
+app.get('/api/attendance-days', async (req, res) => {
+  try {
+    const { department } = req.query;
+    let query = {};
+    if (department && department !== 'All') {
+      query = { $or: [{ department: 'All' }, { department }] };
+    }
+    const days = await AttendanceDay.find(query).sort({ date: -1 });
+    res.json(days);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/attendance-days', async (req, res) => {
+  try {
+    const { date, status, notice, department, createdBy, role } = req.body;
+    if (!date || !status || !notice || !department || !createdBy || !role) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+    
+    // Upsert to handle updates to an existing date/department combination
+    const updatedRule = await AttendanceDay.findOneAndUpdate(
+      { date, department },
+      { status, notice, createdBy, role },
+      { new: true, upsert: true }
+    );
+    res.status(201).json(updatedRule);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+app.delete('/api/attendance-days/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await AttendanceDay.findByIdAndDelete(id);
+    res.json({ message: 'Day configuration deleted successfully' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

@@ -18,6 +18,7 @@ function StudentDashboard() {
   const [pwdUpdateMsg, setPwdUpdateMsg] = useState({ text: '', type: '' });
 
   const [activeView, setActiveView] = useState('details'); // 'details' or 'attendance' as default
+  const [attendanceDaysList, setAttendanceDaysList] = useState([]);
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedSubject, setSelectedSubject] = useState('All');
   const [semesterFilter, setSemesterFilter] = useState('');
@@ -197,10 +198,20 @@ function StudentDashboard() {
       setStudentInfo(parsed);
       setSemesterFilter(parsed.semester); // Default to current semester
       fetchData(parsed, parsed.semester);
+      loadAttendanceDays(parsed);
     } else {
       navigate('/student-services');
     }
   }, []);
+
+  const loadAttendanceDays = async (student) => {
+    try {
+      const days = await api.attendanceDays.getAll(student.department);
+      setAttendanceDaysList(days || []);
+    } catch (err) {
+      console.error('Error loading attendance days:', err);
+    }
+  };
 
   const fetchData = async (student, sem, sub) => {
     if (!student) return;
@@ -328,6 +339,37 @@ function StudentDashboard() {
         </header>
 
         <div className="content-wrapper">
+          {/* Holiday / Day Off Alerts Banner */}
+          {attendanceDaysList && attendanceDaysList.length > 0 && (
+            <div style={{
+              background: '#fffbeb',
+              borderLeft: '6px solid #d97706',
+              padding: '15px 20px',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+              width: '100%',
+              boxSizing: 'border-box'
+            }}>
+              <h4 style={{ margin: '0 0 8px 0', color: '#b45309', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px' }}>
+                <span>⚠️</span> Calendar Updates (Holidays / Special Schedules)
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '13px', color: '#78350f' }}>
+                {attendanceDaysList.slice(0, 2).map(day => {
+                  const formatDateLocal = (dateVal) => {
+                    const parsed = new Date(dateVal);
+                    return isNaN(parsed.getTime()) ? dateVal : parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                  };
+                  return (
+                    <div key={day._id || day.id}>
+                      📅 <strong>{formatDateLocal(day.date)}</strong> is marked as a <strong style={{ color: day.status === 'off' ? '#dc2626' : '#16a34a' }}>{day.status.toUpperCase() === 'OFF' ? 'Holiday (No Classes)' : 'Force Working Day'}</strong> (Notice: <em>{day.notice}</em>)
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {activeView === 'attendance' ? (
             <>
               <div className="left-section">

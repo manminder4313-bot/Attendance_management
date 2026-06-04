@@ -72,6 +72,8 @@ function TeacherProfile() {
   const [isFingerEnrolling, setIsFingerEnrolling] = useState(false);
   const [enrollFingerProgress, setEnrollFingerProgress] = useState(0);
 
+  const [attendanceDaysList, setAttendanceDaysList] = useState([]);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -84,8 +86,18 @@ function TeacherProfile() {
       loadSubmissions(teacherData);
       loadHistory(teacherData);
       initFaceAI();
+      loadAttendanceDays(teacherData);
     }
   }, [navigate, activeTab]);
+
+  const loadAttendanceDays = async (teacherData) => {
+    try {
+      const days = await api.attendanceDays.getAll(teacherData.department);
+      setAttendanceDaysList(days || []);
+    } catch (err) {
+      console.error('Error loading attendance days:', err);
+    }
+  };
 
   const initFaceAI = async () => {
     if (modelsLoaded || isInitializingAI) return;
@@ -1274,7 +1286,36 @@ function TeacherProfile() {
 
         {activeTab === 'attendance' && (
           <div>
-            <div style={{ background: '#fff', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #edf2f7', overflow: 'hidden', marginBottom: '30px' }}>
+            {(() => {
+              const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+              const todayOverride = attendanceDaysList.find(d => d.date === todayStr);
+              if (todayOverride && todayOverride.status === 'off') {
+                return (
+                  <div style={{
+                    background: '#fef2f2',
+                    border: '1.5px solid #ef4444',
+                    borderRadius: '16px',
+                    padding: '40px 30px',
+                    textAlign: 'center',
+                    marginBottom: '30px',
+                    boxShadow: '0 10px 30px rgba(239, 68, 68, 0.08)'
+                  }}>
+                    <span style={{ fontSize: '64px', display: 'block', marginBottom: '20px' }}>🛑</span>
+                    <h3 style={{ color: '#991b1b', margin: '0 0 12px 0', fontSize: '24px', fontWeight: 'bold' }}>Attendance Registration Blocked (Holiday / Day Off)</h3>
+                    <p style={{ color: '#7f1d1d', margin: '0 0 24px 0', fontSize: '16px' }}>
+                      Today (<strong>{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong>) has been configured as a Holiday/Off Day.
+                    </p>
+                    <div style={{ background: 'white', padding: '20px 25px', borderRadius: '12px', display: 'inline-block', border: '1px dashed #fca5a5', maxWidth: '600px', textAlign: 'left' }}>
+                      <strong style={{ color: '#991b1b', fontSize: '14px', display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>Official Notice / Proof:</strong>
+                      <span style={{ color: '#4b5563', fontSize: '15px', lineHeight: '1.6' }}>{todayOverride.notice}</span>
+                    </div>
+                  </div>
+                );
+              }
+              // If not holiday, render the normal block:
+              return (
+                <>
+                  <div style={{ background: '#fff', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #edf2f7', overflow: 'hidden', marginBottom: '30px' }}>
               {/* Header & Mode Switcher */}
               <div style={{ padding: '25px 30px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(to right, #fcfcfc, #fff)' }}>
                 <div>
@@ -2016,6 +2057,9 @@ function TeacherProfile() {
                 </div>
               </div>
             )}
+                </>
+              );
+            })()}
           </div>
         )}
 
