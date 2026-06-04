@@ -111,7 +111,7 @@ function Navbar() {
                     <Link to="/arch" onClick={() => setIsMobileMenuOpen(false)}>Architecture</Link>
                     <Link to="/chem" onClick={() => setIsMobileMenuOpen(false)}>Chemical Engineering</Link>
                     <Link to="/civil" onClick={() => setIsMobileMenuOpen(false)}>Civil Engineering</Link>
-                    <Link to="/cse" onClick={() => setIsMobileMenuOpen(false)}>Computer Science & Engineering</Link>
+                    <Link to="/cse" onClick={() => setIsMobileMenuOpen(false)}>Computational Sciences & Engineering</Link>
                     <Link to="/ca" onClick={() => setIsMobileMenuOpen(false)}>Computer Applications</Link>
                     <Link to="/ee" onClick={() => setIsMobileMenuOpen(false)}>Electrical Engineering</Link>
                     <Link to="/ece" onClick={() => setIsMobileMenuOpen(false)}>Electronics & Communication Engineering</Link>

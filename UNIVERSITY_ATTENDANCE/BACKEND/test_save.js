@@ -5,7 +5,7 @@ async function testSave() {
     fullName: "Demo Teacher",
     email: "demo@mrsptu.ac.in",
     password: "password123",
-    department: "Computer Science",
+    department: "Computational Sciences & Engineering",
     primarySubject: "Data Structures",
     username: "demo1234"
   };

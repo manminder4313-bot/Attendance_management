@@ -34,7 +34,7 @@ function FormStudent() {
   }, []);
   
   const allCourses = [
-    'BCA', 'MCA', 'BCA-MCA Integrated', 'B.Tech CSE', 'BA in Computer science', 'BSE. Graphic',
+    'BCA', 'MCA', 'BCA-MCA Integrated', 'B.Tech CSE', 'BA in Computational Sciences', 'BSE. Graphic',
     'B.Tech Mechanical', 'B.Tech Civil', 'B.Tech Electrical', 'B.Tech ECE',
     'B.Tech Agricultural', 'B.Tech Chemical', 'B.Tech Food Tech', 'B.Tech Textile',
     'B.Arch', 'B.Pharmacy', 'M.Pharmacy', 'MBA', 'BBA', 'B.Sc', 'M.Sc'

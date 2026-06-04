@@ -3,7 +3,7 @@ export const departments = [
   "Department of Architecture",
   "Department of Chemical Engineering",
   "Department of Civil Engineering",
-  "Department of Computer Science & Engineering",
+  "Department of Computational Sciences & Engineering",
   "Department of Computer Applications",
   "Department of Electrical Engineering",
   "Department of Electronics & Communication Engineering",

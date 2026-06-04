@@ -10,8 +10,8 @@ export const departmentService = {
     const name = deptName.toLowerCase();
     
     // Inclusive matching for Computer-related departments
-    if (name.includes('computer science') || name.includes('computer applications')) {
-      return ['B.Tech CSE', 'B.Tech AI&DS', 'BCA', 'MCA', 'BCA-MCA Integrated', 'BA in Computer science', 'BSE. Graphic'];
+    if (name.includes('computational sciences') || name.includes('computer science') || name.includes('computer applications')) {
+      return ['B.Tech CSE', 'B.Tech AI&DS', 'BCA', 'MCA', 'BCA-MCA Integrated', 'BA in Computational Sciences', 'BSE. Graphic'];
     }
     
     if (name.includes('mechanical')) return ['B.Tech Mechanical'];
@@ -33,7 +33,7 @@ export const departmentService = {
     if (!deptName) return [];
     const name = deptName.toLowerCase();
     
-    if (name.includes('computer science') || name.includes('computer applications')) {
+    if (name.includes('computational sciences') || name.includes('computer science') || name.includes('computer applications')) {
       // Return combined subjects for computer fields to cover both cases flexibly
       return [
         'Data Structures', 'Operating Systems', 'Computer Networks', 'Machine Learning', 
