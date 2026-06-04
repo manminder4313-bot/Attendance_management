@@ -10,6 +10,7 @@ import Attendence_home from './Attendance_model/Attendence_home';
 import TeacherProfile from './pages/TeacherProfile';
 import FormStudent from './pages/from_student';
 import FormDepartment from './pages/from_department';
+import FormClerk from './pages/from_clerk';
 import StudentFaceUpload from './pages/StudentFaceUpload';
 import StudentDashboard from './pages/StudentDashboard';
 import { useLocation } from 'react-router-dom';
@@ -32,6 +33,7 @@ function App() {
         <Route path="/teacher-profile" element={<TeacherProfile />} />
         <Route path="/student-form" element={<FormStudent />} />
         <Route path="/department-form" element={<FormDepartment />} />
+        <Route path="/clerk-form" element={<FormClerk />} />
         <Route path="/upload-face" element={<StudentFaceUpload />} />
         <Route path="/student-dashboard" element={<StudentDashboard />} />
       </Routes>

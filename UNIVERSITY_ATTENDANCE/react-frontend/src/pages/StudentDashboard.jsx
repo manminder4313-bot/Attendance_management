@@ -380,6 +380,36 @@ function StudentDashboard() {
                       </div>
                     </div>
                   </div>
+
+                  <div>
+                    <h3 style={{ color: '#2e7d32', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <i className="fas fa-fingerprint"></i> Biometric Enrollment
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                      <div className="info-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        <div>
+                          <label style={{ fontSize: '12px', color: '#999', display: 'block' }}>Face Recognition</label>
+                          <span style={{ fontWeight: '600', color: studentInfo?.enrolledFace ? '#2e7d32' : '#e53935' }}>
+                            {studentInfo?.enrolledFace ? '✓ Fully Enrolled' : '✗ Missing'}
+                          </span>
+                        </div>
+                        {studentInfo?.enrolledFace && (
+                          <img src={studentInfo?.enrolledFace} alt="Enrolled Face" style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover', border: '1px solid #ddd' }} />
+                        )}
+                      </div>
+                      <div className="info-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        <div>
+                          <label style={{ fontSize: '12px', color: '#999', display: 'block' }}>Fingerprint Template</label>
+                          <span style={{ fontWeight: '600', color: studentInfo?.enrolledFingerprint === 'Active' ? '#2e7d32' : '#e53935' }}>
+                            {studentInfo?.enrolledFingerprint === 'Active' ? '✓ Registered' : '✗ Missing'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '24px' }}>
+                          {studentInfo?.enrolledFingerprint === 'Active' ? '👆' : '⚠️'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div style={{ marginTop: '40px', padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '12px', border: '1px dashed #ddd' }}>

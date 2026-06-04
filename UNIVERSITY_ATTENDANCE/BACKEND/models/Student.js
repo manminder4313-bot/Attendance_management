@@ -17,6 +17,8 @@ const StudentSchema = new mongoose.Schema({
   enrolledFace: { type: String },
   lastEnrollmentUpdate: { type: Date },
   faceData: { type: String }, 
+  enrolledFingerprint: { type: String }, // Base64 or string fingerprint pattern
+  fingerprintData: { type: String }, // Biometric signature hash/data
   registrationDate: { type: Date, default: Date.now }
 }, { timestamps: true });
 

@@ -31,38 +31,54 @@ export const departmentService = {
   },
   getSubjects: (deptName) => {
     if (!deptName) return [];
-    switch (deptName) {
-      case 'Department of Computer Science & Engineering':
-        return ['Data Structures', 'Operating Systems', 'Computer Networks', 'Machine Learning', 'Artificial Intelligence', 'Cyber Security'];
-      case 'Department of Computer Applications':
-        return ['Programming in C', 'Java Programming', 'Database Management Systems', 'Web Development', 'Software Engineering', 'Mobile App Development'];
-      case 'Department of Mechanical Engineering':
-        return ['Thermodynamics', 'Fluid Mechanics', 'Theory of Machines', 'Manufacturing Technology', 'Automobile Engineering', 'Robotics'];
-      case 'Department of Civil Engineering':
-        return ['Structural Analysis', 'Geotechnical Engineering', 'Surveying', 'Transportation Engineering', 'Hydraulic Engineering', 'Environmental Engineering'];
-      case 'Department of Electrical Engineering':
-        return ['Circuit Theory', 'Power Systems', 'Control Systems', 'Electrical Machines', 'Power Electronics', 'Renewable Energy Systems'];
-      case 'Department of Electronics & Communication Engineering':
-        return ['Analog Electronics', 'Digital Signal Processing', 'Microprocessors', 'Embedded Systems', 'VLSI Design', 'Communication Theory'];
-      case 'Department of Agricultural Engineering':
-        return ['Farm Machinery', 'Soil and Water Conservation', 'Irrigation Engineering', 'Agricultural Processing', 'Post Harvest Technology', 'Renewable Energy in Agriculture'];
-      case 'Department of Chemical Engineering':
-        return ['Chemical Reaction Engineering', 'Mass Transfer', 'Heat Transfer', 'Process Control', 'Plant Design', 'Polymer Science'];
-      case 'Department of Food Science & Technology':
-        return ['Food Microbiology', 'Food Chemistry', 'Food Preservation', 'Food Packaging', 'Quality Control', 'Beverage Technology'];
-      case 'Department of Textile Engineering':
-        return ['Yarn Manufacture', 'Fabric Manufacture', 'Textile Testing', 'Textile Chemical Processing', 'Apparel Technology', 'Fibre Science'];
-      case 'Department of Architecture':
-        return ['Architectural Design', 'Building Construction', 'History of Architecture', 'Town Planning', 'Urban Design', 'Landscape Architecture'];
-      case 'Department of Pharmacy':
-        return ['Pharmaceutics', 'Pharmacology', 'Pharmaceutical Chemistry', 'Pharmacognosy', 'Hospital Pharmacy', 'Clinical Pharmacy'];
-      case 'Department of Management Studies':
-        return ['Financial Management', 'Marketing Management', 'Human Resource Management', 'Business Analytics', 'Entrepreneurship', 'Strategic Management'];
-      case 'Department of Applied Sciences (Physics, Chemistry, Maths)':
-        return ['Engineering Physics', 'Engineering Chemistry', 'Engineering Mathematics', 'Numerical Methods', 'Optics', 'Materials Science'];
-      default:
-        return ['General Subject'];
+    const name = deptName.toLowerCase();
+    
+    if (name.includes('computer science') || name.includes('computer applications')) {
+      // Return combined subjects for computer fields to cover both cases flexibly
+      return [
+        'Data Structures', 'Operating Systems', 'Computer Networks', 'Machine Learning', 
+        'Artificial Intelligence', 'Cyber Security', 'Programming in C', 'Java Programming', 
+        'Database Management Systems', 'Web Development', 'Software Engineering', 'Mobile App Development'
+      ];
     }
+    if (name.includes('mechanical')) {
+      return ['Thermodynamics', 'Fluid Mechanics', 'Theory of Machines', 'Manufacturing Technology', 'Automobile Engineering', 'Robotics'];
+    }
+    if (name.includes('civil')) {
+      return ['Structural Analysis', 'Geotechnical Engineering', 'Surveying', 'Transportation Engineering', 'Hydraulic Engineering', 'Environmental Engineering'];
+    }
+    if (name.includes('electrical')) {
+      return ['Circuit Theory', 'Power Systems', 'Control Systems', 'Electrical Machines', 'Power Electronics', 'Renewable Energy Systems'];
+    }
+    if (name.includes('electronics') || name.includes('ece')) {
+      return ['Analog Electronics', 'Digital Signal Processing', 'Microprocessors', 'Embedded Systems', 'VLSI Design', 'Communication Theory'];
+    }
+    if (name.includes('agricultural')) {
+      return ['Farm Machinery', 'Soil and Water Conservation', 'Irrigation Engineering', 'Agricultural Processing', 'Post Harvest Technology', 'Renewable Energy in Agriculture'];
+    }
+    if (name.includes('chemical')) {
+      return ['Chemical Reaction Engineering', 'Mass Transfer', 'Heat Transfer', 'Process Control', 'Plant Design', 'Polymer Science'];
+    }
+    if (name.includes('food')) {
+      return ['Food Microbiology', 'Food Chemistry', 'Food Preservation', 'Food Packaging', 'Quality Control', 'Beverage Technology'];
+    }
+    if (name.includes('textile')) {
+      return ['Yarn Manufacture', 'Fabric Manufacture', 'Textile Testing', 'Textile Chemical Processing', 'Apparel Technology', 'Fibre Science'];
+    }
+    if (name.includes('architecture')) {
+      return ['Architectural Design', 'Building Construction', 'History of Architecture', 'Town Planning', 'Urban Design', 'Landscape Architecture'];
+    }
+    if (name.includes('pharmacy')) {
+      return ['Pharmaceutics', 'Pharmacology', 'Pharmaceutical Chemistry', 'Pharmacognosy', 'Hospital Pharmacy', 'Clinical Pharmacy'];
+    }
+    if (name.includes('management') || name.includes('studies')) {
+      return ['Financial Management', 'Marketing Management', 'Human Resource Management', 'Business Analytics', 'Entrepreneurship', 'Strategic Management'];
+    }
+    if (name.includes('applied science')) {
+      return ['Engineering Physics', 'Engineering Chemistry', 'Engineering Mathematics', 'Numerical Methods', 'Optics', 'Materials Science'];
+    }
+    
+    return ['General Subject'];
   }
 };
 

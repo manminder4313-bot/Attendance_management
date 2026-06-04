@@ -21,16 +21,17 @@ function FormStudent() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Check if a Department HOD is logged in to filter courses
-  const isDepartmentLoggedIn = sessionStorage.getItem('isDepartmentLoggedIn') === 'true';
-  const roleDepartmentData = isDepartmentLoggedIn ? JSON.parse(sessionStorage.getItem('loggedInDepartment')) : null;
+  // Check if a Department HOD or Clerk is logged in to filter courses
+  const isClerkLoggedIn = sessionStorage.getItem('isClerkLoggedIn') === 'true';
+  const isDepartmentLoggedIn = sessionStorage.getItem('isDepartmentLoggedIn') === 'true' || isClerkLoggedIn;
+  const roleDepartmentData = isDepartmentLoggedIn ? (JSON.parse(sessionStorage.getItem('loggedInDepartment')) || JSON.parse(sessionStorage.getItem('loggedInClerk'))) : null;
   
   // Autofill department if HOD is logged in
   useEffect(() => {
     if (isDepartmentLoggedIn && roleDepartmentData?.department) {
       setFormData(prev => ({ ...prev, department: roleDepartmentData.department }));
     }
-  }, [isDepartmentLoggedIn, roleDepartmentData]);
+  }, []);
   
   const allCourses = [
     'BCA', 'MCA', 'BCA-MCA Integrated', 'B.Tech CSE', 'BA in Computer science', 'BSE. Graphic',
@@ -139,10 +140,43 @@ function FormStudent() {
     try {
       await api.students.create(studentData);
       alert(`Success! Account created for ${formData.fullName}.\n\n[ADMIN BACKUP]\nUsername: ${username}\nPassword: ${password}`);
-      navigate('/');
+      
+      e.target.reset();
+      setFormData({
+        fullName: '',
+        email: '',
+        phone: '',
+        gender: 'Select gender',
+        dob: '',
+        enrollmentNumber: '',
+        department: isDepartmentLoggedIn && roleDepartmentData?.department ? roleDepartmentData.department : '',
+        course: '',
+        semester: '',
+        batchYear: '',
+        profilePhoto: ''
+      });
+
+      navigate('/admin');
     } catch (err) {
       console.error('Submission failed:', err);
       alert('Error saving to database. Please check if server is running.');
+      
+      e.target.reset();
+      setFormData({
+        fullName: '',
+        email: '',
+        phone: '',
+        gender: 'Select gender',
+        dob: '',
+        enrollmentNumber: '',
+        department: isDepartmentLoggedIn && roleDepartmentData?.department ? roleDepartmentData.department : '',
+        course: '',
+        semester: '',
+        batchYear: '',
+        profilePhoto: ''
+      });
+
+      navigate('/admin');
     } finally {
       setLoading(false);
     }
@@ -237,9 +271,14 @@ function FormStudent() {
               <label>Semester</label>
               <select name="semester" value={formData.semester} onChange={handleChange} required>
                 <option value="">Select semester</option>
-                {[...Array(getMaxSem(formData.course))].map((_, i) => (
-                  <option key={i+1} value={i+1}>{i+1}</option>
-                ))}
+                {Array.from({ length: getMaxSem(formData.course) }, (_, i) => i + 1)
+                  .filter(n => {
+                    const isOddSession = new Date().getMonth() >= 6;
+                    return isOddSession ? (n % 2 !== 0) : (n % 2 === 0);
+                  })
+                  .map(n => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
               </select>
             </div>
             <div className="form-group" style={{ flex: 1 }}>
@@ -270,9 +309,34 @@ function FormStudent() {
             </div>
           )}
 
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? 'Submitting Details...' : 'Submit Details'}
-          </button>
+          <div style={{ display: 'flex', gap: '15px', marginTop: '20px' }}>
+            <button type="submit" className="btn-primary" disabled={loading} style={{ flex: 1 }}>
+              {loading ? 'Submitting Details...' : 'Submit Details'}
+            </button>
+            <button 
+              type="button" 
+              onClick={(e) => {
+                e.preventDefault();
+                console.log("Navigating back to admin dashboard...");
+                navigate('/admin');
+              }} 
+              style={{ 
+                flex: 1, 
+                background: '#555', 
+                color: 'white', 
+                border: 'none', 
+                padding: '12px', 
+                borderRadius: '8px', 
+                fontWeight: 'bold', 
+                cursor: 'pointer',
+                transition: 'background 0.3s'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.background = '#333'}
+              onMouseOut={(e) => e.currentTarget.style.background = '#555'}
+            >
+              Back to Dashboard
+            </button>
+          </div>
         </form>
       </div>
     </div>

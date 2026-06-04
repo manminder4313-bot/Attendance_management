@@ -68,8 +68,8 @@ export const adminService = {
         if (withCreds) row.push(s.username, s.password);
         return row;
       });
-    } else if (activeTab === 'departments') {
-      headers = [['Department', 'Head Name', 'Email', 'Phone']];
+    } else if (activeTab === 'departments' || activeTab === 'clerks') {
+      headers = [[activeTab === 'clerks' ? 'Department' : 'Department', activeTab === 'clerks' ? 'Clerk Name' : 'Head Name', 'Email', 'Phone']];
       if (withCreds) headers[0].push('Username', 'Password');
       tableBody = data.map(d => {
         const row = [d.department, d.headName, d.email, d.phone];

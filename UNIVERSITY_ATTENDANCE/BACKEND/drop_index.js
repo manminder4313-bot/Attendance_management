@@ -9,18 +9,18 @@ async function dropIndex() {
     console.log('Connected to MongoDB');
     
     const db = mongoose.connection.db;
-    const collection = db.collection('admins');
+    const collection = db.collection('departments');
     
     console.log('Current indexes:');
     const indexes = await collection.indexes();
     console.log(indexes);
     
-    if (indexes.some(i => i.name === 'id_1')) {
-      console.log('Dropping index id_1...');
-      await collection.dropIndex('id_1');
+    if (indexes.some(i => i.name === 'name_1')) {
+      console.log('Dropping index name_1...');
+      await collection.dropIndex('name_1');
       console.log('Index dropped successfully');
     } else {
-      console.log('Index id_1 not found');
+      console.log('Index name_1 not found');
     }
     
     process.exit(0);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import emailjs from '@emailjs/browser';
 import api from '../services/api';
@@ -14,19 +14,20 @@ function FormPage() {
     qualification: '',
     experience: '',
     department: 'Select Department',
-    primarySubject: 'Select subjects',
+    primarySubject: '',
     profilePhoto: '',
     documents: []
   });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Check if a Department HOD is logged in
-  const isDepartmentLoggedIn = sessionStorage.getItem('isDepartmentLoggedIn') === 'true';
-  const roleDepartmentData = isDepartmentLoggedIn ? JSON.parse(sessionStorage.getItem('loggedInDepartment')) : null;
+  // Check if a Department HOD or Clerk is logged in
+  const isClerkLoggedIn = sessionStorage.getItem('isClerkLoggedIn') === 'true';
+  const isDepartmentLoggedIn = sessionStorage.getItem('isDepartmentLoggedIn') === 'true' || isClerkLoggedIn;
+  const roleDepartmentData = isDepartmentLoggedIn ? (JSON.parse(sessionStorage.getItem('loggedInDepartment')) || JSON.parse(sessionStorage.getItem('loggedInClerk'))) : null;
 
   // If HOD is logged in, set their department automatically
-  useState(() => {
+  useEffect(() => {
     if (isDepartmentLoggedIn && roleDepartmentData?.department) {
       setFormData(prev => ({ ...prev, department: roleDepartmentData.department }));
     }
@@ -73,7 +74,7 @@ function FormPage() {
       });
     } else {
       let formattedValue = e.target.value;
-      if (['fullName', 'primarySubject', 'qualification'].includes(e.target.name) && formattedValue.length > 0) {
+      if (['fullName', 'qualification'].includes(e.target.name) && formattedValue.length > 0) {
         formattedValue = formattedValue.charAt(0).toUpperCase() + formattedValue.slice(1).toLowerCase();
       }
       setFormData({ ...formData, [e.target.name]: formattedValue });
@@ -110,11 +111,43 @@ function FormPage() {
       await emailjs.send('service_dosao84', 'service_dosao84', templateParams);
       
       alert(`Success! Account created for ${formData.fullName}.\n\nCredentials have been sent to: ${formData.email}`);
-      navigate('/');
+      
+      e.target.reset();
+      setFormData({
+        fullName: '',
+        email: '',
+        phone: '',
+        gender: 'Select gender',
+        dob: '',
+        qualification: '',
+        experience: '',
+        department: isDepartmentLoggedIn && roleDepartmentData?.department ? roleDepartmentData.department : 'Select Department',
+        primarySubject: '',
+        profilePhoto: '',
+        documents: []
+      });
+
+      navigate('/admin');
     } catch (err) {
       console.error('Submission failed:', err);
       alert(`Account created in DB, but email failed to send or server error.\n\n[BACKUP]\nUsername: ${username}\nPassword: ${password}`);
-      navigate('/');
+      
+      e.target.reset();
+      setFormData({
+        fullName: '',
+        email: '',
+        phone: '',
+        gender: 'Select gender',
+        dob: '',
+        qualification: '',
+        experience: '',
+        department: isDepartmentLoggedIn && roleDepartmentData?.department ? roleDepartmentData.department : 'Select Department',
+        primarySubject: '',
+        profilePhoto: '',
+        documents: []
+      });
+
+      navigate('/admin');
     } finally {
       setLoading(false);
     }
@@ -214,9 +247,34 @@ function FormPage() {
             </select>
           </div>
 
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? 'Sending Credentials Email...' : 'Submit Details'}
-          </button>
+          <div style={{ display: 'flex', gap: '15px', marginTop: '20px' }}>
+            <button type="submit" className="btn-primary" disabled={loading} style={{ flex: 1 }}>
+              {loading ? 'Sending Credentials Email...' : 'Submit Details'}
+            </button>
+            <button 
+              type="button" 
+              onClick={(e) => {
+                e.preventDefault();
+                console.log("Navigating back to admin dashboard...");
+                navigate('/admin');
+              }} 
+              style={{ 
+                flex: 1, 
+                background: '#555', 
+                color: 'white', 
+                border: 'none', 
+                padding: '12px', 
+                borderRadius: '8px', 
+                fontWeight: 'bold', 
+                cursor: 'pointer',
+                transition: 'background 0.3s'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.background = '#333'}
+              onMouseOut={(e) => e.currentTarget.style.background = '#555'}
+            >
+              Back to Dashboard
+            </button>
+          </div>
         </form>
       </div>
     </div>

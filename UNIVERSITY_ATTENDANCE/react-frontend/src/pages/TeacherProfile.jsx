@@ -63,6 +63,15 @@ function TeacherProfile() {
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
 
+  // Biometric Fingerprint States
+  const [isFingerScanning, setIsFingerScanning] = useState(false);
+  const [scanningStudent, setScanningStudent] = useState(null);
+  const [scanFingerProgress, setScanFingerProgress] = useState(0);
+  const [biometricLog, setBiometricLog] = useState([]);
+  const [enrollingStudent, setEnrollingStudent] = useState(null);
+  const [isFingerEnrolling, setIsFingerEnrolling] = useState(false);
+  const [enrollFingerProgress, setEnrollFingerProgress] = useState(0);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -532,6 +541,240 @@ function TeacherProfile() {
     }, 2000);
   };
 
+  const playBeep = (type = 'success') => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      if (type === 'success') {
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.15);
+      } else if (type === 'error') {
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(220, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.35);
+      } else if (type === 'scan') {
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.05);
+      }
+    } catch (e) {
+      console.warn("Audio Context beep failed:", e);
+    }
+  };
+
+  const generateBiometricProof = (verifiedCount) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
+
+    const grad = ctx.createLinearGradient(0, 0, 640, 480);
+    grad.addColorStop(0, '#0a0f1d');
+    grad.addColorStop(1, '#070a13');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 640, 480);
+
+    ctx.strokeStyle = 'rgba(0, 230, 118, 0.05)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 640; i += 40) {
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 480); ctx.stroke();
+    }
+    for (let i = 0; i < 480; i += 40) {
+      ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(640, i); ctx.stroke();
+    }
+
+    ctx.strokeStyle = '#00e676';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(20, 20, 600, 440);
+
+    ctx.fillStyle = '#00e676';
+    ctx.fillRect(15, 15, 40, 6);
+    ctx.fillRect(15, 15, 6, 40);
+    ctx.fillRect(585, 15, 40, 6);
+    ctx.fillRect(619, 15, 6, 40);
+    ctx.fillRect(15, 459, 40, 6);
+    ctx.fillRect(15, 425, 6, 40);
+    ctx.fillRect(585, 459, 40, 6);
+    ctx.fillRect(619, 425, 6, 40);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('MRSPTU BIOMETRIC SYSTEM', 320, 70);
+
+    ctx.fillStyle = '#00e676';
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.fillText('SECURE FINGERPRINT ATTENDANCE VERIFIED', 320, 100);
+
+    ctx.strokeStyle = 'rgba(0, 230, 118, 0.4)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(320, 210, 50, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(320, 210, 40, Math.PI, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(320, 210, 30, 0, Math.PI);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(320, 210, 20, Math.PI, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(320, 210, 10, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(0, 230, 118, 0.2)';
+    ctx.fillRect(220, 205, 200, 10);
+    ctx.fillStyle = '#00e676';
+    ctx.fillRect(220, 209, 200, 2);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.fillRect(60, 290, 520, 130);
+    ctx.strokeStyle = 'rgba(0, 230, 118, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(60, 290, 520, 130);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#8892b0';
+    ctx.font = '14px "Segoe UI", Arial, sans-serif';
+    ctx.fillText(`Teacher: ${teacher?.fullName || 'Teacher'}`, 80, 320);
+    ctx.fillText(`Subject: ${selectedSubject || teacher?.primarySubject}`, 80, 345);
+    ctx.fillText(`Course/Semester: ${selectedCourse} (${semesterFilter})`, 80, 370);
+    ctx.fillText(`Date/Session: ${new Date().toLocaleDateString()} - ${selectedSession}`, 80, 395);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#00e676';
+    ctx.font = 'bold 20px "Segoe UI", Arial, sans-serif';
+    ctx.fillText(`${verifiedCount} Present`, 540, 330);
+    ctx.fillStyle = '#ff8a80';
+    ctx.font = 'bold 16px "Segoe UI", Arial, sans-serif';
+    ctx.fillText(`${filteredBySemester.length - verifiedCount} Absent`, 540, 360);
+
+    ctx.fillStyle = '#00e676';
+    ctx.font = '10px "Courier New", monospace';
+    ctx.fillText(`SYS_REF: FP-SEC-${Date.now().toString().slice(-6)}`, 540, 400);
+
+    return canvas.toDataURL('image/jpeg', 0.85);
+  };
+
+  const startFingerprintScan = (student = null) => {
+    if (student) {
+      if (!student.enrolledFingerprint) {
+        alert(`⚠️ Student ${student.fullName} has no fingerprint enrolled. Plz click "Register Print" first.`);
+        return;
+      }
+      setScanningStudent(student);
+    } else {
+      const candidate = filteredBySemester.find(s => s.enrolledFingerprint && attendanceMarks[s.id] !== 'Present');
+      if (!candidate) {
+        alert("No unregistered student found with enrolled fingerprint. All enrolled students are marked present!");
+        return;
+      }
+      setScanningStudent(candidate);
+    }
+
+    setIsFingerScanning(true);
+    setScanFingerProgress(0);
+    setBiometricLog(['📡 Biometric Scanner Online', '🔌 Waiting for finger contact...']);
+
+    let prog = 0;
+    const interval = setInterval(() => {
+      prog += 10;
+      setScanFingerProgress(prog);
+      playBeep('scan');
+
+      if (prog === 20) {
+        setBiometricLog(prev => [...prev, '👆 Finger detected. Scanning pattern...']);
+      } else if (prog === 50) {
+        setBiometricLog(prev => [...prev, '🔍 Matching minutiae points in database...']);
+      } else if (prog === 80) {
+        setBiometricLog(prev => [...prev, '🧬 Verifying biometric signature...']);
+      } else if (prog === 100) {
+        clearInterval(interval);
+        playBeep('success');
+        
+        setTimeout(() => {
+          setIsFingerScanning(false);
+          const studentId = student ? student.id : candidate.id;
+          setAttendanceMarks(prev => {
+            const next = { ...prev };
+            next[studentId] = 'Present';
+            return next;
+          });
+          setSaveStatus({ text: `Biometric Match: ${student ? student.fullName : candidate.fullName} marked Present!`, type: 'success' });
+          setTimeout(() => setSaveStatus({ text: '', type: '' }), 3000);
+        }, 500);
+      }
+    }, 200);
+  };
+
+  const startFingerprintEnrollment = (student) => {
+    setEnrollingStudent(student);
+    setIsFingerEnrolling(true);
+    setEnrollFingerProgress(0);
+    setBiometricLog(['🧬 Biometric Enrollment Mode', '🔌 Connect external scanner or place finger on sensor...']);
+
+    let prog = 0;
+    const interval = setInterval(() => {
+      prog += 5;
+      setEnrollFingerProgress(prog);
+      playBeep('scan');
+
+      if (prog === 20) {
+        setBiometricLog(prev => [...prev, '👆 First Press: Scan ridge details...']);
+      } else if (prog === 40) {
+        setBiometricLog(prev => [...prev, '☝ Lift finger. Press again to verify...']);
+      } else if (prog === 60) {
+        setBiometricLog(prev => [...prev, '👆 Second Press: Stitching ridge maps...']);
+      } else if (prog === 85) {
+        setBiometricLog(prev => [...prev, '💾 Creating cryptosecure biometric template...']);
+      } else if (prog === 100) {
+        clearInterval(interval);
+        playBeep('success');
+
+        setTimeout(async () => {
+          setIsFingerEnrolling(false);
+          
+          try {
+            const mockPrintTemplate = `FP-TEMPLATE-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+            const sId = student._id || student.id;
+            
+            await api.students.update(sId, {
+              enrolledFingerprint: 'Active',
+              fingerprintData: mockPrintTemplate
+            });
+
+            setStudents(prev => prev.map(s => {
+              if (s.id === sId || s._id === sId) {
+                return { ...s, enrolledFingerprint: 'Active', fingerprintData: mockPrintTemplate };
+              }
+              return s;
+            }));
+
+            setSaveStatus({ text: `Fingerprint Enrolled for ${student.fullName}!`, type: 'success' });
+            setTimeout(() => setSaveStatus({ text: '', type: '' }), 3000);
+          } catch (err) {
+            console.error('Biometric Enrollment error:', err);
+            alert(`Biometric Enrollment failed: ${err.message || 'Server error'}`);
+          }
+        }, 500);
+      }
+    }, 150);
+  };
+
   const getAvailableSemesters = () => {
     const month = new Date().getMonth(); // 0-11
     const isEvenSession = month < 6; // Jan to June
@@ -969,6 +1212,7 @@ function TeacherProfile() {
                   <tr style={{ background: '#f8f9fa', textTransform: 'uppercase', fontSize: '13px' }}>
                     <th style={thStyle}>Reg. Photo</th>
                     <th style={thStyle}>Enrolled Face</th>
+                    <th style={thStyle}>Fingerprint</th>
                     <th style={thStyle}>Roll No</th>
                     <th style={thStyle}>Full Name</th>
                     <th style={thStyle}>Course</th>
@@ -980,6 +1224,7 @@ function TeacherProfile() {
                   {isLoadingStudents ? (
                     Array(5).fill(0).map((_, i) => (
                       <tr key={`skel-stud-${i}`} style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
                         <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
                         <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
                         <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
@@ -1002,6 +1247,13 @@ function TeacherProfile() {
                         <td style={tdStyle}>
                           {s.enrolledFace ? (
                             <img src={s.enrolledFace} alt="Enrolled" style={{ width: '35px', height: '35px', borderRadius: '4px', objectFit: 'cover', border: '2px solid #27ae60' }} />
+                          ) : (
+                            <div style={{ width: '35px', height: '35px', borderRadius: '4px', background: '#fff3f3', border: '1px dashed #e74c3c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#e74c3c' }}>Missing</div>
+                          )}
+                        </td>
+                        <td style={tdStyle}>
+                          {s.enrolledFingerprint === 'Active' ? (
+                            <div style={{ width: '35px', height: '35px', borderRadius: '4px', background: '#e8f5e9', border: '2px solid #2e7d32', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', color: '#2e7d32' }}>👆</div>
                           ) : (
                             <div style={{ width: '35px', height: '35px', borderRadius: '4px', background: '#fff3f3', border: '1px dashed #e74c3c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#e74c3c' }}>Missing</div>
                           )}
@@ -1055,6 +1307,19 @@ function TeacherProfile() {
                     }}
                   >
                     <span>📸</span> Smart Scanner
+                  </button>
+                  <button 
+                    onClick={() => { setMarkingMode('fingerprint'); stopCamera(); }}
+                    style={{ 
+                      padding: '10px 24px', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                      background: markingMode === 'fingerprint' ? '#660000' : 'transparent',
+                      color: markingMode === 'fingerprint' ? 'white' : '#64748b',
+                      fontSize: '14px', fontWeight: '700', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      boxShadow: markingMode === 'fingerprint' ? '0 4px 10px rgba(102,0,0,0.2)' : 'none'
+                    }}
+                  >
+                    <span>👆</span> Fingerprint Scan
                   </button>
                 </div>
               </div>
@@ -1192,6 +1457,27 @@ function TeacherProfile() {
                       </button>
                     </>
                   )}
+                  {markingMode === 'fingerprint' && filteredBySemester.length > 0 && (
+                    <button 
+                      onClick={async () => {
+                        const verifiedCount = Object.values(attendanceMarks).filter(status => status === 'Present').length;
+                        const proofImg = generateBiometricProof(verifiedCount);
+                        const isSaved = await saveAttendanceData(attendanceMarks, proofImg);
+                        if (isSaved) {
+                          // Clear marking states
+                        }
+                      }}
+                      style={{ 
+                        background: '#2e7d32', 
+                        color: 'white', border: 'none', padding: '12px 32px', borderRadius: '12px', 
+                        cursor: 'pointer', 
+                        fontWeight: '800', fontSize: '14px', transition: 'all 0.3s',
+                        boxShadow: '0 4px 15px rgba(46,125,50,0.25)'
+                      }}
+                    >
+                      Finalize Biometric Session
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1305,7 +1591,7 @@ function TeacherProfile() {
                   </div>
                 )}
               </>
-            ) : (
+            ) : markingMode === 'smart' ? (
               <div style={{ padding: '20px', textAlign: 'center' }}>
                 {!isCameraOpen ? (
                   <div style={{ padding: '60px', border: '2px dashed #ddd', borderRadius: '20px', background: '#fcfcfc' }}>
@@ -1670,6 +1956,11 @@ function TeacherProfile() {
                     )}
 
                     <style>{`
+                      @keyframes laserScan {
+                        0% { top: 5%; opacity: 0.3; }
+                        50% { top: 95%; opacity: 1; }
+                        100% { top: 5%; opacity: 0.3; }
+                      }
                       @keyframes scanLineFull {
                         0% { top: 10%; opacity: 0.8; }
                         50% { top: 90%; opacity: 1; }
@@ -1691,6 +1982,211 @@ function TeacherProfile() {
                         border-radius: 10px;
                       }
                     `}</style>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                {(isAttendanceReady || isLoadingStudents) ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px', padding: '20px' }}>
+                    {/* Left Column - Fingerprint Scanner Hardware Simulator */}
+                    <div style={{ background: '#0a0f1d', borderRadius: '24px', padding: '40px 30px', textAlign: 'center', border: '1px solid rgba(0,230,118,0.2)', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '450px', position: 'relative', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+                      {/* Grid background effect */}
+                      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0.05, backgroundImage: 'linear-gradient(to right, #00e676 1px, transparent 1px), linear-gradient(to bottom, #00e676 1px, transparent 1px)', backgroundSize: '20px 20px', pointerEvents: 'none' }}></div>
+                      
+                      {isFingerScanning ? (
+                        <>
+                          <div style={{ position: 'relative', width: '120px', height: '140px', marginBottom: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {/* Scanning fingerprint graphic */}
+                            <svg width="120" height="140" viewBox="0 0 24 28" fill="none" stroke="#00e676" strokeWidth="1" strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 8px #00e676)' }}>
+                              <path d="M12 2C6.48 2 2 6.48 2 12C2 13.92 2.55 15.7 3.5 17.2M22 12C22 6.48 17.52 2 12 2" />
+                              <path d="M5.5 19.5C6.75 21 8.5 22 10.5 22.3M18.5 19.5C19.38 18.5 20 17.2 20.3 15.8" />
+                              <path d="M8.5 7.5C10 6.5 12 6.5 13.5 7.5M6.5 11C7 9.5 8.5 8.5 10.5 8.2M15.5 12.5C15 14 13.5 15 11.5 15.3" />
+                              <path d="M10 11C10 11.5 10.5 12 11 12C11.5 12 12 11.5 12 11C12 10.5 11.5 10 11 10C10.5 10 10 10.5 10 11" />
+                            </svg>
+                            {/* Laser Line */}
+                            <div style={{ position: 'absolute', left: 0, right: 0, height: '4px', background: '#00e676', boxShadow: '0 0 15px #00e676', animation: 'laserScan 1.5s infinite ease-in-out', borderRadius: '2px' }}></div>
+                          </div>
+                          
+                          <h3 style={{ color: '#00e676', margin: '0 0 10px 0', fontSize: '1.4rem', fontFamily: 'monospace', letterSpacing: '1px' }}>
+                            BIOMETRIC SCANNING
+                          </h3>
+                          <div style={{ width: '80%', height: '8px', background: '#222', borderRadius: '4px', marginBottom: '20px', overflow: 'hidden' }}>
+                            <div style={{ width: `${scanFingerProgress}%`, height: '100%', background: '#00e676', transition: 'width 0.1s linear', boxShadow: '0 0 10px #00e676' }}></div>
+                          </div>
+                          <div style={{ fontSize: '14px', fontFamily: 'monospace', color: '#8892b0', height: '24px' }}>
+                            {scanningStudent ? `Matching fingerprint for ${scanningStudent.fullName}...` : 'Auto-scanning live fingerprint...'}
+                          </div>
+                        </>
+                      ) : isFingerEnrolling ? (
+                        <>
+                          <div style={{ position: 'relative', width: '120px', height: '140px', marginBottom: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <svg width="120" height="140" viewBox="0 0 24 28" fill="none" stroke="#2196f3" strokeWidth="1" strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 8px #2196f3)' }}>
+                              <path d="M12 2C6.48 2 2 6.48 2 12C2 13.92 2.55 15.7 3.5 17.2M22 12C22 6.48 17.52 2 12 2" />
+                              <path d="M5.5 19.5C6.75 21 8.5 22 10.5 22.3M18.5 19.5C19.38 18.5 20 17.2 20.3 15.8" />
+                            </svg>
+                            <div style={{ position: 'absolute', left: 0, right: 0, height: '4px', background: '#2196f3', boxShadow: '0 0 15px #2196f3', animation: 'laserScan 1.5s infinite ease-in-out', borderRadius: '2px' }}></div>
+                          </div>
+                          <h3 style={{ color: '#2196f3', margin: '0 0 10px 0', fontSize: '1.4rem', fontFamily: 'monospace', letterSpacing: '1px' }}>
+                            ENROLLING FINGERPRINT
+                          </h3>
+                          <div style={{ width: '80%', height: '8px', background: '#222', borderRadius: '4px', marginBottom: '20px', overflow: 'hidden' }}>
+                            <div style={{ width: `${enrollFingerProgress}%`, height: '100%', background: '#2196f3', transition: 'width 0.1s linear', boxShadow: '0 0 10px #2196f3' }}></div>
+                          </div>
+                          <div style={{ fontSize: '14px', fontFamily: 'monospace', color: '#8892b0' }}>
+                            Student: <strong>{enrollingStudent?.fullName}</strong>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div 
+                            onClick={() => startFingerprintScan(null)}
+                            style={{ 
+                              width: '130px', height: '130px', borderRadius: '50%', background: 'rgba(0,230,118,0.05)', 
+                              border: '2px dashed rgba(0,230,118,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                              cursor: 'pointer', marginBottom: '30px', transition: 'all 0.3s',
+                              boxShadow: 'inset 0 0 20px rgba(0,230,118,0.02)'
+                            }}
+                          >
+                            <svg width="80" height="90" viewBox="0 0 24 28" fill="none" stroke="rgba(0,230,118,0.8)" strokeWidth="1.5" strokeLinecap="round">
+                              <path d="M12 2C6.48 2 2 6.48 2 12C2 13.92 2.55 15.7 3.5 17.2M22 12C22 6.48 17.52 2 12 2" />
+                              <path d="M5.5 19.5C6.75 21 8.5 22 10.5 22.3M18.5 19.5C19.38 18.5 20 17.2 20.3 15.8" />
+                              <path d="M8.5 7.5C10 6.5 12 6.5 13.5 7.5M6.5 11C7 9.5 8.5 8.5 10.5 8.2M15.5 12.5C15 14 13.5 15 11.5 15.3" />
+                              <path d="M10 11C10 11.5 10.5 12 11 12C11.5 12 12 11.5 12 11C12 10.5 11.5 10 11 10C10.5 10 10 10.5 10 11" />
+                            </svg>
+                          </div>
+                          <h3 style={{ color: '#ffffff', margin: '0 0 10px 0', fontSize: '1.5rem', fontWeight: 'bold' }}>
+                            Biometric Sensor Ready
+                          </h3>
+                          <p style={{ color: '#8892b0', fontSize: '14px', maxWidth: '300px', margin: '0 auto 25px', lineHeight: '1.5' }}>
+                            Click the sensor above to simulate a live fingerprint scan of any enrolled student, or click the individual "Scan" buttons on the right.
+                          </p>
+                          <button 
+                            onClick={() => startFingerprintScan(null)}
+                            style={{ 
+                              background: '#00e676', color: '#05050a', border: 'none', padding: '12px 30px', borderRadius: '12px', 
+                              fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s',
+                              boxShadow: '0 4px 15px rgba(0,230,118,0.3)'
+                            }}
+                          >
+                            Scan Next Fingerprint
+                          </button>
+                        </>
+                      )}
+
+                      {/* Diagnostic Log */}
+                      <div style={{ width: '100%', marginTop: '30px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px', textAlign: 'left' }}>
+                        <div style={{ fontSize: '11px', color: '#00e676', fontFamily: 'monospace', fontWeight: 'bold', marginBottom: '8px' }}>BIOMETRIC_LOG</div>
+                        <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '10px', height: '110px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '11px', color: '#8892b0', border: '1px solid rgba(255,255,255,0.05)' }}>
+                          {biometricLog.map((log, index) => (
+                            <div key={index} style={{ marginBottom: '4px', color: log.startsWith('✓') ? '#00e676' : log.startsWith('⚠️') ? '#ff5252' : '#8892b0' }}>{log}</div>
+                          ))}
+                          {biometricLog.length === 0 && (
+                            <div style={{ fontStyle: 'italic', opacity: 0.5 }}>System idle. Ready to match minutiae points.</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column - Biometric Roster */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                      <div style={{ background: '#fff', borderRadius: '20px', padding: '25px', border: '1px solid #edf2f7', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #f1f5f9', paddingBottom: '15px' }}>
+                          <div>
+                            <h4 style={{ margin: 0, color: '#1e293b', fontSize: '1.2rem', fontWeight: 'bold' }}>Biometric Roster</h4>
+                            <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '12px' }}>Total Class Size: {filteredBySemester.length} Students</p>
+                          </div>
+                          <div style={{ display: 'flex', gap: '15px' }}>
+                            <span style={{ fontSize: '13px', color: '#2e7d32', fontWeight: 'bold' }}>
+                              ✓ Present: {Object.values(attendanceMarks).filter(s => s === 'Present').length}
+                            </span>
+                            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold' }}>
+                              ✗ Absent: {filteredBySemester.length - Object.values(attendanceMarks).filter(s => s === 'Present').length}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Student Biometric List */}
+                        <div style={{ maxHeight: '380px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }} className="custom-scrollbar">
+                          {filteredBySemester.map(s => {
+                            const isPresent = attendanceMarks[s.id] === 'Present';
+                            const hasFingerprint = s.enrolledFingerprint === 'Active';
+                            
+                            return (
+                              <div 
+                                key={s.id}
+                                style={{ 
+                                  display: 'flex', alignItems: 'center', gap: '15px', padding: '12px 15px', 
+                                  borderRadius: '14px', background: isPresent ? '#f4fbf7' : '#f8fafc',
+                                  border: isPresent ? '1px solid #c8e6c9' : '1px solid #f1f5f9',
+                                  transition: 'all 0.2s'
+                                }}
+                              >
+                                <img 
+                                  src={s.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.fullName)}&background=8a2c20&color=fff`} 
+                                  style={{ width: '40px', height: '40px', borderRadius: '10px', objectFit: 'cover' }} 
+                                  alt={s.fullName} 
+                                />
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e293b' }}>{s.fullName}</div>
+                                  <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <span>{s.enrollmentNumber}</span>
+                                    <span>•</span>
+                                    <span style={{ color: hasFingerprint ? '#2e7d32' : '#e53935', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                      {hasFingerprint ? '👆 Registered' : '⚠️ Missing'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                  {!hasFingerprint ? (
+                                    <button 
+                                      onClick={() => startFingerprintEnrollment(s)}
+                                      disabled={isFingerScanning || isFingerEnrolling}
+                                      style={{ 
+                                        background: '#2196f3', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '8px',
+                                        fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                      }}
+                                    >
+                                      <span>🔑</span> Register
+                                    </button>
+                                  ) : isPresent ? (
+                                    <span style={{ background: '#2e7d32', color: 'white', padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 'bold' }}>
+                                      ✓ Present
+                                    </span>
+                                  ) : (
+                                    <button 
+                                      onClick={() => startFingerprintScan(s)}
+                                      disabled={isFingerScanning || isFingerEnrolling}
+                                      style={{ 
+                                        background: '#00e676', color: '#0a0f1d', border: 'none', padding: '6px 12px', borderRadius: '8px',
+                                        fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                      }}
+                                    >
+                                      <span>👆</span> Scan
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {filteredBySemester.length === 0 && (
+                            <div style={{ textAlign: 'center', padding: '40px', color: '#999', fontStyle: 'italic' }}>
+                              No students found. Adjust semester/course filter.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '80px 40px', background: '#fff', borderRadius: '24px', border: '2px dashed #e2e8f0', margin: '20px 0', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.02)' }}>
+                    <div style={{ fontSize: '5rem', marginBottom: '25px', filter: 'grayscale(100%) brightness(1.2)', opacity: 0.5 }}>📋</div>
+                    <h3 style={{ color: '#1e293b', fontSize: '1.8rem', fontWeight: '800', margin: '0 0 10px 0' }}>Data Selection Required</h3>
+                    <p style={{ color: '#64748b', fontSize: '1.1rem', maxWidth: '500px', margin: '0 auto', lineHeight: '1.6' }}>
+                      Please select a <strong>Course</strong>, <strong>Semester</strong> and <strong>Assigned Subject</strong> from the control panel above to load the student biometric scanner.
+                    </p>
                   </div>
                 )}
               </div>

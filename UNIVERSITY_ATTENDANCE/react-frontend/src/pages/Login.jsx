@@ -74,6 +74,10 @@ function Login() {
         sessionStorage.setItem('isDepartmentLoggedIn', 'true');
         sessionStorage.setItem('loggedInDepartment', JSON.stringify(data.user));
         navigate('/admin');
+      } else if (data.type === 'clerk') {
+        sessionStorage.setItem('isClerkLoggedIn', 'true');
+        sessionStorage.setItem('loggedInClerk', JSON.stringify(data.user));
+        navigate('/admin');
       }
     } catch (err) {
       console.error('Login error:', err);

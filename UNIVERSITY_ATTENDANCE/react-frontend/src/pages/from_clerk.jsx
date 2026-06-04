@@ -1,18 +1,29 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { departments } from '../utils/departments';
 
-function FormDepartment() {
+function FormClerk() {
   const [formData, setFormData] = useState({
     headName: '',
     email: '',
     phone: '',
     department: 'Select Department',
-    profilePhoto: ''
+    profilePhoto: '',
+    role: 'clerk'
   });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  // Check if HOD is logged in to autofill and lock department selection
+  const isHODLoggedIn = sessionStorage.getItem('isDepartmentLoggedIn') === 'true';
+  const roleDepartmentData = isHODLoggedIn ? JSON.parse(sessionStorage.getItem('loggedInDepartment')) : null;
+
+  useEffect(() => {
+    if (isHODLoggedIn && roleDepartmentData?.department) {
+      setFormData(prev => ({ ...prev, department: roleDepartmentData.department }));
+    }
+  }, []);
 
   const compressImage = (file, callback) => {
     const reader = new FileReader();
@@ -55,21 +66,32 @@ function FormDepartment() {
     setLoading(true);
 
     try {
-      const username = (formData.department.replace(/\s+/g, '').toLowerCase() + formData.phone.slice(-4)).replace(/[^a-z0-9]/g, '');
+      const username = ('clerk_' + formData.department.replace(/\s+/g, '').toLowerCase() + formData.phone.slice(-4)).replace(/[^a-z0-9_]/g, '');
       const password = Math.random().toString(36).slice(-8);
 
-      const departmentData = {
+      const clerkData = {
         ...formData,
         username,
         password
       };
 
-      await api.departments.create(departmentData);
+      await api.departments.create(clerkData);
 
-      alert(`Success! Department account created for ${formData.department}.\n\n[ADMIN BACKUP]\nUsername: ${username}\nPassword: ${password}`);
+      alert(`Success! Clerk account created for ${formData.department}.\n\n[ADMIN BACKUP]\nUsername: ${username}\nPassword: ${password}`);
+      
+      e.target.reset();
+      setFormData({
+        headName: '',
+        email: '',
+        phone: '',
+        department: 'Select Department',
+        profilePhoto: '',
+        role: 'clerk'
+      });
+
       navigate('/admin');
     } catch (err) {
-      alert('Error saving department: ' + err.message);
+      alert('Error saving clerk: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -78,14 +100,14 @@ function FormDepartment() {
   return (
     <div className="auth-container">
       <div className="form-box" style={{ maxWidth: '900px' }}>
-        <h1>Department Registration Form</h1>
-        <p style={{ textAlign: 'center', marginBottom: '30px', color: '#666' }}>Create a new department login and details</p>
+        <h1>Clerk Registration Form</h1>
+        <p style={{ textAlign: 'center', marginBottom: '30px', color: '#666' }}>Create a new department clerk login and details</p>
 
         <form onSubmit={handleSubmit}>
-          <h2 style={{ borderBottom: '2px solid #eaeaea', color: '#333', paddingBottom: '5px', margin: '25px 0 15px' }}>Head of Department (HOD) Details</h2>
+          <h2 style={{ borderBottom: '2px solid #eaeaea', color: '#333', paddingBottom: '5px', margin: '25px 0 15px' }}>Clerk Details</h2>
           <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
-              <label>HOD Full Name</label>
+              <label>Clerk Full Name</label>
               <input name="headName" type="text" placeholder="Enter full name" onChange={handleChange} required />
             </div>
             <div className="form-group" style={{ flex: 1 }}>
@@ -101,7 +123,14 @@ function FormDepartment() {
             </div>
             <div className="form-group" style={{ flex: 1 }}>
               <label>Department Name</label>
-              <select name="department" onChange={handleChange} required>
+              <select 
+                name="department" 
+                value={formData.department} 
+                onChange={handleChange} 
+                disabled={isHODLoggedIn}
+                style={{ background: isHODLoggedIn ? '#f5f5f5' : 'white', cursor: isHODLoggedIn ? 'not-allowed' : 'pointer' }}
+                required
+              >
                 <option value="">Select Department</option>
                 {departments.map(dept => (
                   <option key={dept} value={dept}>{dept}</option>
@@ -112,7 +141,7 @@ function FormDepartment() {
 
           <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
-              <label>Department Logo / HOD Photo</label>
+              <label>Clerk Photo</label>
               <input name="profilePhoto" type="file" accept="image/*" onChange={handleChange} />
             </div>
             <div className="form-group" style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
@@ -122,7 +151,7 @@ function FormDepartment() {
 
           <div style={{ display: 'flex', gap: '15px', marginTop: '20px' }}>
             <button type="submit" className="btn-primary" disabled={loading} style={{ flex: 1 }}>
-              {loading ? 'Creating Department...' : 'Register Department'}
+              {loading ? 'Creating Clerk...' : 'Register Clerk'}
             </button>
             <button 
               type="button" 
@@ -154,4 +183,4 @@ function FormDepartment() {
   );
 }
 
-export default FormDepartment;
+export default FormClerk;

@@ -5,6 +5,12 @@ import autoTable from 'jspdf-autotable';
 import api from '../services/api';
 import { departments } from '../utils/departments';
 
+const formatDate = (dateVal) => {
+  if (!dateVal) return 'N/A';
+  const parsed = new Date(dateVal);
+  return isNaN(parsed.getTime()) ? dateVal : parsed.toLocaleDateString('en-GB');
+};
+
 function Admin() {
   const [submissions, setSubmissions] = useState([]);
   const [studentSubmissions, setStudentSubmissions] = useState([]);
@@ -215,8 +221,9 @@ function Admin() {
   };
 
   const isAdminLoggedIn = sessionStorage.getItem('isAdminLoggedIn') === 'true';
-  const isDepartmentLoggedIn = sessionStorage.getItem('isDepartmentLoggedIn') === 'true';
-  const roleDepartmentData = isDepartmentLoggedIn ? JSON.parse(sessionStorage.getItem('loggedInDepartment')) : null;
+  const isClerkLoggedIn = sessionStorage.getItem('isClerkLoggedIn') === 'true';
+  const isDepartmentLoggedIn = sessionStorage.getItem('isDepartmentLoggedIn') === 'true' || isClerkLoggedIn;
+  const roleDepartmentData = isDepartmentLoggedIn ? (JSON.parse(sessionStorage.getItem('loggedInDepartment')) || JSON.parse(sessionStorage.getItem('loggedInClerk'))) : null;
   const adminCreds = isAdminLoggedIn ? JSON.parse(sessionStorage.getItem('loggedInAdmin')) : null;
 
   useEffect(() => {
@@ -253,7 +260,7 @@ function Admin() {
       setAttendanceRecords(recs.map(r => ({
         ...r,
         id: r._id || r.id,
-        dateDisplay: r.date ? new Date(r.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'
+        dateDisplay: r.date ? formatDate(r.date) : 'N/A'
       })));
 
       console.log(`📊 Data Loaded: ${teachers.length} Teachers, ${students.length} Students, ${depts.length} Departments`);
@@ -387,7 +394,9 @@ function Admin() {
   const handleLogout = () => {
     sessionStorage.removeItem('isAdminLoggedIn');
     sessionStorage.removeItem('isDepartmentLoggedIn');
+    sessionStorage.removeItem('isClerkLoggedIn');
     sessionStorage.removeItem('loggedInDepartment');
+    sessionStorage.removeItem('loggedInClerk');
     sessionStorage.removeItem('loggedInAdmin');
     navigate('/');
   };
@@ -402,6 +411,10 @@ function Admin() {
 
   const handleAddDepartment = () => {
     navigate('/department-form');
+  };
+
+  const handleAddClerk = () => {
+    navigate('/clerk-form');
   };
 
   const handleClearData = async () => {
@@ -426,7 +439,7 @@ function Admin() {
           try {
             if (activeTab === 'teachers') await api.teachers.delete(id);
             else if (activeTab === 'students') await api.students.delete(id);
-            else if (activeTab === 'departments') await api.departments.delete(id);
+            else if (activeTab === 'departments' || activeTab === 'clerks') await api.departments.delete(id);
             else if (activeTab === 'admins') await api.admins.delete(id);
             else if (activeTab === 'attendance_history') await api.attendance.delete(id);
             successCount++;
@@ -454,6 +467,12 @@ function Admin() {
   const baseTeachers = isDepartmentLoggedIn && roleDepartmentData ? submissions.filter(t => t.department === roleDepartmentData.department) : submissions;
   const baseStudents = isDepartmentLoggedIn && roleDepartmentData ? studentSubmissions.filter(s => api.departments.getCourses(roleDepartmentData.department).includes(s.course)) : studentSubmissions;
 
+  const isHOD = sessionStorage.getItem('isDepartmentLoggedIn') === 'true';
+  const isHODOrAdmin = isAdminLoggedIn || isHOD;
+  const hodSubmissions = departmentSubmissions.filter(d => d.role !== 'clerk');
+  const allClerks = departmentSubmissions.filter(d => d.role === 'clerk');
+  const baseClerks = isDepartmentLoggedIn && roleDepartmentData ? allClerks.filter(c => c.department === roleDepartmentData.department) : allClerks;
+
   const filteredTeachers = baseTeachers.filter(t => departmentFilter === 'All' || t.department === departmentFilter);
   const filteredStudents = baseStudents.filter(s =>
     (isDepartmentLoggedIn || !studentDeptFilter || s.department === studentDeptFilter) &&
@@ -465,8 +484,9 @@ function Admin() {
   const handleSelectAll = (e) => {
     const currentData = activeTab === 'teachers' ? filteredTeachers
       : activeTab === 'students' ? filteredStudents
-        : activeTab === 'departments' ? departmentSubmissions
-          : adminSubmissions;
+        : activeTab === 'departments' ? hodSubmissions
+          : activeTab === 'clerks' ? baseClerks
+            : adminSubmissions;
 
     if (e.target.checked) {
       if (activeTab === 'admins') {
@@ -523,7 +543,7 @@ function Admin() {
               {isDepartmentLoggedIn ? `${roleDepartmentData?.department} Dashboard` : 'Admin Dashboard'}
             </h2>
             {isDepartmentLoggedIn ? (
-              <p style={{ color: '#666', margin: '5px 0 0 0', fontWeight: 'bold' }}>HOD: {roleDepartmentData?.headName}</p>
+              <p style={{ color: '#666', margin: '5px 0 0 0', fontWeight: 'bold' }}>{isClerkLoggedIn ? 'Clerk' : 'HOD'}: {roleDepartmentData?.headName}</p>
             ) : isAdminLoggedIn && adminCreds?.fullName ? (
               <p style={{ color: '#666', margin: '5px 0 0 0', fontWeight: 'bold' }}>
                 Admin: {adminCreds?.fullName}
@@ -541,6 +561,11 @@ function Admin() {
           <button onClick={handleAddStudent} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', marginRight: '10px' }}>
             Add Student
           </button>
+          {!isClerkLoggedIn && (
+            <button onClick={handleAddClerk} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', marginRight: '10px' }}>
+              Add Clerk
+            </button>
+          )}
           {!isDepartmentLoggedIn && (
             <>
               <button onClick={handleAddDepartment} style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', marginRight: '10px' }}>
@@ -594,6 +619,13 @@ function Admin() {
               Attendance Stats
             </button>
           )}
+          {isHODOrAdmin && (
+            <button
+              onClick={() => { setActiveTab('clerks'); setSelectedIds([]); setIsDeleteMode(false); }}
+              style={{ padding: '10px 20px', border: 'none', background: 'none', borderBottom: activeTab === 'clerks' ? '3px solid var(--primary)' : 'none', color: activeTab === 'clerks' ? 'var(--primary)' : '#666', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>
+              Clerk Submissions
+            </button>
+          )}
         </div>
 
         <div className="admin-filters">
@@ -632,7 +664,7 @@ function Admin() {
               </select>
               <select value={semesterFilter} onChange={(e) => { setSemesterFilter(e.target.value); setSelectedIds([]); }} style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }}>
                 <option value="">Select Semester</option>
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                {(new Date().getMonth() >= 6 ? [1, 3, 5, 7, 9] : [2, 4, 6, 8, 10]).map(n => (
                   <option key={n} value={`${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester`}>
                     {n}{n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester
                   </option>
@@ -658,7 +690,7 @@ function Admin() {
             <p style={{ color: '#666', margin: 0 }}>Please select {!isDepartmentLoggedIn && !studentDeptFilter ? 'a Department, ' : ''}a <strong>Course</strong> and <strong>Semester</strong> to view the student list.</p>
           </div>
         ) : (
-          ((activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? departmentSubmissions : adminSubmissions).length === 0 && !isLoading) ? (
+          ((activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? hodSubmissions : activeTab === 'clerks' ? baseClerks : adminSubmissions).length === 0 && !isLoading) ? (
             <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-light)', fontStyle: 'italic' }}>
               No {activeTab} submissions found.
             </div>
@@ -713,7 +745,7 @@ function Admin() {
                           </div>
                         </div>
                       </td>
-                      <td style={tdStyle}>{s.createdAt || s.registrationDate ? new Date(s.createdAt || s.registrationDate).toLocaleString() : (s.submissionDate || 'N/A')}</td>
+                      <td style={tdStyle}>{formatDate(s.createdAt || s.registrationDate || s.submissionDate)}</td>
                       <td style={{ ...tdStyle, fontWeight: 600 }}>{s.fullName}</td>
                       <td style={tdStyle}>{s.email}</td>
                       <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{s.course}</span></td>
@@ -780,7 +812,7 @@ function Admin() {
                             </div>
                           </div>
                         </td>
-                        <td style={tdStyle}>{t.createdAt ? new Date(t.createdAt).toLocaleString() : (t.submissionDate || 'N/A')}</td>
+                        <td style={tdStyle}>{formatDate(t.createdAt || t.submissionDate)}</td>
                         <td style={{ ...tdStyle, fontWeight: 600 }}>{t.fullName}</td>
                         <td style={tdStyle}>{t.email}</td>
                         <td style={tdStyle}>{t.phone}</td>
@@ -799,9 +831,9 @@ function Admin() {
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr>
-                    {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={departmentSubmissions.length > 0 && selectedIds.length === departmentSubmissions.length} /></th>}
-                    <th style={thStyle}>Date</th>
+                    {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={hodSubmissions.length > 0 && selectedIds.length === hodSubmissions.length} /></th>}
                     <th style={thStyle}>Photo</th>
+                    <th style={thStyle}>Date</th>
                     <th style={thStyle}>Head Name</th>
                     <th style={thStyle}>Email</th>
                     <th style={thStyle}>Phone</th>
@@ -814,8 +846,8 @@ function Admin() {
                     Array(5).fill(0).map((_, i) => (
                       <tr key={`skel-dept-${i}`} style={{ borderBottom: '1px solid #eee' }}>
                         {isDeleteMode && <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '20px' }}></div></td>}
-                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
                         <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
                         <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '150px' }}></div></td>
                         <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '180px' }}></div></td>
                         <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
@@ -824,10 +856,9 @@ function Admin() {
                       </tr>
                     ))
                   ) : (
-                    departmentSubmissions.map((d) => (
+                    hodSubmissions.map((d) => (
                       <tr key={d.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(d.id) ? '#f0f8ff' : 'transparent' }}>
                         {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(d.id)} onChange={() => handleSelect(d.id)} /></td>}
-                        <td style={tdStyle}>{d.createdAt ? new Date(d.createdAt).toLocaleString() : (d.submissionDate || 'N/A')}</td>
                         <td style={tdStyle}>
                           <div style={{ position: 'relative', display: 'inline-block' }}>
                             {d.profilePhoto ? (
@@ -843,12 +874,67 @@ function Admin() {
                             </div>
                           </div>
                         </td>
+                        <td style={tdStyle}>{formatDate(d.createdAt || d.submissionDate)}</td>
                         <td style={{ ...tdStyle, fontWeight: 600 }}>{d.headName}</td>
                         <td style={tdStyle}>{d.email}</td>
                         <td style={tdStyle}>{d.phone}</td>
                         <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{d.department}</span></td>
                         <td style={tdStyle}>
                           <button onClick={() => viewDeptDetails(d)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            ) : activeTab === 'clerks' ? (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr>
+                    {isDeleteMode && <th style={{ ...thStyle, width: '40px' }}><input type="checkbox" onChange={handleSelectAll} checked={baseClerks.length > 0 && selectedIds.length === baseClerks.length} /></th>}
+                    <th style={thStyle}>Photo</th>
+                    <th style={thStyle}>Date</th>
+                    <th style={thStyle}>Clerk Name</th>
+                    <th style={thStyle}>Email</th>
+                    <th style={thStyle}>Phone</th>
+                    <th style={thStyle}>Department</th>
+                    <th style={thStyle}>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoading ? (
+                    Array(5).fill(0).map((_, i) => (
+                      <tr key={`skel-clerk-${i}`} style={{ borderBottom: '1px solid #eee' }}>
+                        {isDeleteMode && <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '20px' }}></div></td>}
+                        <td style={tdStyle}><div className="skeleton skeleton-avatar"></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '150px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '180px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '100px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '120px' }}></div></td>
+                        <td style={tdStyle}><div className="skeleton skeleton-text" style={{ width: '80px' }}></div></td>
+                      </tr>
+                    ))
+                  ) : (
+                    baseClerks.map((c) => (
+                      <tr key={c.id} style={{ borderBottom: '1px solid #eee', background: selectedIds.includes(c.id) ? '#f0f8ff' : 'transparent' }}>
+                        {isDeleteMode && <td style={tdStyle}><input type="checkbox" checked={selectedIds.includes(c.id)} onChange={() => handleSelect(c.id)} /></td>}
+                        <td style={tdStyle}>
+                          <div style={{ position: 'relative', display: 'inline-block' }}>
+                            {c.profilePhoto ? (
+                              <img src={c.profilePhoto} alt="Profile" className="profile-thumb" />
+                            ) : (
+                              <div className="profile-thumb" style={{ background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '14px', fontWeight: 'bold' }}>{c.headName?.charAt(0).toUpperCase()}</div>
+                            )}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>{formatDate(c.createdAt || c.submissionDate)}</td>
+                        <td style={{ ...tdStyle, fontWeight: 600 }}>{c.headName}</td>
+                        <td style={tdStyle}>{c.email}</td>
+                        <td style={tdStyle}>{c.phone}</td>
+                        <td style={tdStyle}><span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: '#e1f5fe', color: '#0288d1' }}>{c.department}</span></td>
+                        <td style={tdStyle}>
+                          <button onClick={() => viewDeptDetails(c)} style={{ background: 'none', border: 'none', color: '#1e6bd6', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}>View Profile</button>
                         </td>
                       </tr>
                     ))
@@ -881,7 +967,7 @@ function Admin() {
                           )}
                         </div>
                       </td>
-                      <td style={tdStyle}>{a.createdAt ? new Date(a.createdAt).toLocaleString() : (a.submissionDate || 'N/A')}</td>
+                      <td style={tdStyle}>{formatDate(a.createdAt || a.submissionDate)}</td>
                       <td style={{ ...tdStyle, fontWeight: 600 }}>{a.fullName || 'Admin User'}</td>
                       <td style={tdStyle}>{a.email}</td>
                       <td style={tdStyle}>{a.contact}</td>
@@ -1091,7 +1177,7 @@ function Admin() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
               <button
                 onClick={() => {
-                  const currentData = activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? departmentSubmissions : adminSubmissions;
+                  const currentData = activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? hodSubmissions : activeTab === 'clerks' ? baseClerks : adminSubmissions;
                   api.admins.generateListPDF(activeTab, currentData, true);
                   setShowPdfModal(false);
                 }}
@@ -1100,7 +1186,7 @@ function Admin() {
               </button>
               <button
                 onClick={() => {
-                  const currentData = activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? departmentSubmissions : adminSubmissions;
+                  const currentData = activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? hodSubmissions : activeTab === 'clerks' ? baseClerks : adminSubmissions;
                   api.admins.generateListPDF(activeTab, currentData, false);
                   setShowPdfModal(false);
                 }}
@@ -1216,6 +1302,47 @@ function Admin() {
                     <strong>Portal Password:</strong> <code style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{selectedTeacher.password}</code>
                   </div>
                 </div>
+
+                {selectedTeacher.documents && selectedTeacher.documents.length > 0 && (
+                  <div style={{ marginTop: '20px' }}>
+                    <h3 style={{ margin: '0 0 10px 0', color: '#333', fontSize: '16px', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>
+                      Educational Documents 📂
+                    </h3>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                      {selectedTeacher.documents.map((doc, idx) => (
+                        <a
+                          key={idx}
+                          href={doc.data}
+                          download={doc.name}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            background: '#f1f3f5',
+                            color: '#373a3c',
+                            textDecoration: 'none',
+                            padding: '6px 12px',
+                            borderRadius: '20px',
+                            fontSize: '13px',
+                            border: '1px solid #dee2e6',
+                            fontWeight: '500',
+                            transition: 'all 0.2s',
+                          }}
+                          onMouseOver={(e) => {
+                            e.currentTarget.style.background = '#e9ecef';
+                            e.currentTarget.style.borderColor = '#ced4da';
+                          }}
+                          onMouseOut={(e) => {
+                            e.currentTarget.style.background = '#f1f3f5';
+                            e.currentTarget.style.borderColor = '#dee2e6';
+                          }}
+                        >
+                          📄 {doc.name.length > 25 ? doc.name.substring(0, 22) + '...' : doc.name}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1365,10 +1492,10 @@ function Admin() {
               <img src={selectedDept.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '110px', height: '110px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--primary)' }} />
               <div style={{ flex: 1 }}>
                 <h2 style={{ margin: '0 0 5px 0', color: 'var(--primary)', fontSize: '26px' }}>{selectedDept.department}</h2>
-                <p style={{ margin: '0 0 10px 0', color: '#666', fontWeight: 'bold' }}>Head: {selectedDept.headName}</p>
+                <p style={{ margin: '0 0 10px 0', color: '#666', fontWeight: 'bold' }}>{selectedDept.role === 'clerk' ? 'Clerk' : 'Head'}: {selectedDept.headName}</p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', fontSize: '14px', background: '#f8f9fa', padding: '15px', borderRadius: '10px' }}>
-                  <div style={{ color: '#555' }}><strong>HOD Email:</strong> {selectedDept.email}</div>
-                  <div style={{ color: '#555' }}><strong>HOD Phone:</strong> {selectedDept.phone}</div>
+                  <div style={{ color: '#555' }}><strong>{selectedDept.role === 'clerk' ? 'Clerk' : 'HOD'} Email:</strong> {selectedDept.email}</div>
+                  <div style={{ color: '#555' }}><strong>{selectedDept.role === 'clerk' ? 'Clerk' : 'HOD'} Phone:</strong> {selectedDept.phone}</div>
                   <div style={{ color: '#27ae60', background: '#e8f5e9', padding: '5px 10px', borderRadius: '5px' }}>
                     <strong>Portal Username:</strong> {selectedDept.username}
                   </div>
@@ -1381,7 +1508,7 @@ function Admin() {
 
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20px', gap: '15px' }}>
               <button
-                onClick={() => handleShare(selectedDept, 'Department HOD')}
+                onClick={() => handleShare(selectedDept, selectedDept.role === 'clerk' ? 'Clerk' : 'Department HOD')}
                 style={{ background: '#25D366', color: 'white', border: 'none', padding: '10px 30px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
               >
                 Share Details 📲
