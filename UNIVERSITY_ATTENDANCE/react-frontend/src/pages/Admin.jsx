@@ -1156,8 +1156,23 @@ function Admin() {
               </select>
               <select value={semesterFilter} onChange={(e) => { setSemesterFilter(e.target.value); setSelectedIds([]); }} style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }}>
                 <option value="">Select Semester</option>
-                <option value="Odd Semester">Odd Semester</option>
-                <option value="Even Semester">Even Semester</option>
+                {new Date().getMonth() < 6 ? (
+                  <>
+                    <option value="2nd Semester">2nd Semester</option>
+                    <option value="4th Semester">4th Semester</option>
+                    <option value="6th Semester">6th Semester</option>
+                    <option value="8th Semester">8th Semester</option>
+                    <option value="10th Semester">10th Semester</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="1st Semester">1st Semester</option>
+                    <option value="3rd Semester">3rd Semester</option>
+                    <option value="5th Semester">5th Semester</option>
+                    <option value="7th Semester">7th Semester</option>
+                    <option value="9th Semester">9th Semester</option>
+                  </>
+                )}
               </select>
             </div>
           ) : null}
@@ -1676,8 +1691,23 @@ function Admin() {
                       style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none', background: 'white' }}
                     >
                       <option value="">-- Choose Semester --</option>
-                      <option value="Odd Semester">Odd Semester</option>
-                      <option value="Even Semester">Even Semester</option>
+                      {new Date().getMonth() < 6 ? (
+                        <>
+                          <option value="2nd Semester">2nd Semester</option>
+                          <option value="4th Semester">4th Semester</option>
+                          <option value="6th Semester">6th Semester</option>
+                          <option value="8th Semester">8th Semester</option>
+                          <option value="10th Semester">10th Semester</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="1st Semester">1st Semester</option>
+                          <option value="3rd Semester">3rd Semester</option>
+                          <option value="5th Semester">5th Semester</option>
+                          <option value="7th Semester">7th Semester</option>
+                          <option value="9th Semester">9th Semester</option>
+                        </>
+                      )}
                     </select>
                   </div>
                   <div style={{ flex: 1 }}>
@@ -1744,7 +1774,9 @@ function Admin() {
                           <div key={semesterName} style={{ background: 'white', borderRadius: '15px', padding: '25px', boxShadow: '0 8px 25px rgba(0,0,0,0.08)', borderLeft: '6px solid var(--primary)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                               <div>
-                                <h4 style={{ margin: '0 0 5px 0', color: 'var(--primary)', fontSize: '20px' }}>{semesterName}</h4>
+                                <h4 style={{ margin: '0 0 5px 0', color: 'var(--primary)', fontSize: '20px' }}>
+                                  {semesterName === 'Odd Semester' ? 'Odd Semester (1, 3, 5, 7, 9)' : (semesterName === 'Even Semester' ? 'Even Semester (2, 4, 6, 8, 10)' : semesterName)}
+                                </h4>
                                 <p style={{ margin: 0, fontSize: '13px', color: '#888', fontWeight: '600' }}>{statsCourseFilter} {statsSubjectFilter !== 'All' ? `(${statsSubjectFilter})` : ''}</p>
                               </div>
                               <div style={{ borderRadius: '50%', width: '50px', height: '50px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>📈</div>

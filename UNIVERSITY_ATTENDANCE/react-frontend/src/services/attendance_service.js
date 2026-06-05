@@ -68,7 +68,8 @@ export const attendanceService = {
     doc.text(`Course: ${course}`, 20, 70);
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(10);
-    doc.text(`Semester: ${semester} | Subject: ${course.split(' - ')[1] || 'All Subjects'} | Total Sessions: ${records.length}`, 20, 78);
+    const displaySemester = semester === 'Odd Semester' ? 'Odd Semester (1, 3, 5, 7, 9)' : (semester === 'Even Semester' ? 'Even Semester (2, 4, 6, 8, 10)' : semester);
+    doc.text(`Semester: ${displaySemester} | Subject: ${course.split(' - ')[1] || 'All Subjects'} | Total Sessions: ${records.length}`, 20, 78);
     
     const tableData = students.map(student => {
       const studentRecords = records.filter(r => r.attendance?.[student.id]);

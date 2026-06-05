@@ -10,6 +10,7 @@ export const adminService = {
     body: JSON.stringify({ id, password }) 
   }),
   update: (id, data) => fetchApi(`/admins/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) => fetchApi(`/admins/${id}`, { method: 'DELETE' }),
 
   // PDF Generation for Lists
   generateListPDF: async (activeTab, data, withCreds) => {

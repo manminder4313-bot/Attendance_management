@@ -4,6 +4,7 @@ export const departmentService = {
   getAll: () => fetchApi('/departments'),
   create: (data) => fetchApi('/departments', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => fetchApi(`/departments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) => fetchApi(`/departments/${id}`, { method: 'DELETE' }),
 
   getCourses: (deptName) => {
     if (!deptName) return [];

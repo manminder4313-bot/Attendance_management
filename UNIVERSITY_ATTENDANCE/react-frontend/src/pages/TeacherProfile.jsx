@@ -553,7 +553,8 @@ function TeacherProfile() {
         const now = new Date();
         fctx.fillText(`MRSPTU CONTINUOUS SCAN PROOF | ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`, 30, 50);
         fctx.font = '22px "Inter", Arial';
-        fctx.fillText(`Subject: ${selectedSubject || teacher.primarySubject} | Semester: ${semesterFilter}`, 30, 90);
+        const displaySemester = semesterFilter === 'Odd Semester' ? 'Odd Semester (1, 3, 5, 7, 9)' : (semesterFilter === 'Even Semester' ? 'Even Semester (2, 4, 6, 8, 10)' : semesterFilter);
+        fctx.fillText(`Subject: ${selectedSubject || teacher.primarySubject} | Semester: ${displaySemester}`, 30, 90);
         fctx.textAlign = 'right';
         fctx.font = 'bold 40px "Inter", Arial';
         fctx.fillText(`${presentList.length} STUDENTS PRESENT`, canvas.width - 30, 75);
@@ -753,9 +754,10 @@ function TeacherProfile() {
     ctx.textAlign = 'left';
     ctx.fillStyle = '#8892b0';
     ctx.font = '14px "Segoe UI", Arial, sans-serif';
+    const displaySemester = semesterFilter === 'Odd Semester' ? 'Odd Semester (1, 3, 5, 7, 9)' : (semesterFilter === 'Even Semester' ? 'Even Semester (2, 4, 6, 8, 10)' : semesterFilter);
     ctx.fillText(`Teacher: ${teacher?.fullName || 'Teacher'}`, 80, 320);
     ctx.fillText(`Subject: ${selectedSubject || teacher?.primarySubject}`, 80, 345);
-    ctx.fillText(`Course/Semester: ${selectedCourse} (${semesterFilter})`, 80, 370);
+    ctx.fillText(`Course/Semester: ${selectedCourse} (${displaySemester})`, 80, 370);
     ctx.fillText(`Date/Session: ${new Date().toLocaleDateString()} - ${selectedSession}`, 80, 395);
 
     ctx.textAlign = 'right';
@@ -881,7 +883,7 @@ function TeacherProfile() {
   const getAvailableSemesters = () => {
     const month = new Date().getMonth(); // 0-11
     const isEvenSession = month < 6; // Jan to June
-    return isEvenSession ? ["Even Semester", "Odd Semester"] : ["Odd Semester", "Even Semester"];
+    return isEvenSession ? ["Even Semester"] : ["Odd Semester"];
   };
 
   const getIsDuplicate = () => {
@@ -939,6 +941,7 @@ function TeacherProfile() {
       const now = new Date();
       const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       
+      const displaySemester = semesterFilter === 'Odd Semester' ? 'Odd Semester (1, 3, 5, 7, 9)' : (semesterFilter === 'Even Semester' ? 'Even Semester (2, 4, 6, 8, 10)' : semesterFilter);
       const record = {
         date: localDate,
         teacherId: teacher._id || teacher.id,
@@ -961,7 +964,7 @@ function TeacherProfile() {
       try {
         await api.notices.create({
           title: `📋 Attendance Marked — ${record.subject}`,
-          message: `Prof. ${teacher.fullName} marked attendance for ${record.course} (${semesterFilter}) on ${formattedDate}. Session: ${selectedSession || 'N/A'}. Present: ${presentCount}/${totalCount} students.`,
+          message: `Prof. ${teacher.fullName} marked attendance for ${record.course} (${displaySemester}) on ${formattedDate}. Session: ${selectedSession || 'N/A'}. Present: ${presentCount}/${totalCount} students.`,
           category: 'attendance',
           department: teacher.department,
         });
@@ -1030,7 +1033,8 @@ function TeacherProfile() {
         // Report Information
         ctx.fillStyle = '#333';
         ctx.font = 'bold 32px "Segoe UI", Arial, sans-serif';
-        ctx.fillText(`STUDENT LIST - ${semesterFilter === 'All' ? 'ALL SEMESTERS' : semesterFilter.toUpperCase()}`, 360, 310);
+        const displaySemester = semesterFilter === 'Odd Semester' ? 'Odd Semester (1, 3, 5, 7, 9)' : (semesterFilter === 'Even Semester' ? 'Even Semester (2, 4, 6, 8, 10)' : semesterFilter);
+        ctx.fillText(`STUDENT LIST - ${semesterFilter === 'All' ? 'ALL SEMESTERS' : displaySemester.toUpperCase()}`, 360, 310);
 
         resolve(canvas.toDataURL('image/png'));
       };
@@ -1320,9 +1324,23 @@ function TeacherProfile() {
                   style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
                 >
                   <option value="">Select Semester</option>
-                  {getAvailableSemesters().map(sem => (
-                    <option key={sem} value={sem}>{sem}</option>
-                  ))}
+                  {new Date().getMonth() < 6 ? (
+                    <>
+                      <option value="2nd Semester">2nd Semester</option>
+                      <option value="4th Semester">4th Semester</option>
+                      <option value="6th Semester">6th Semester</option>
+                      <option value="8th Semester">8th Semester</option>
+                      <option value="10th Semester">10th Semester</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="1st Semester">1st Semester</option>
+                      <option value="3rd Semester">3rd Semester</option>
+                      <option value="5th Semester">5th Semester</option>
+                      <option value="7th Semester">7th Semester</option>
+                      <option value="9th Semester">9th Semester</option>
+                    </>
+                  )}
                 </select>
               </div>
               {filteredBySemester.length > 0 && (
@@ -1516,9 +1534,23 @@ function TeacherProfile() {
                       style={{ padding: '12px 16px', borderRadius: '10px', border: '1.5px solid #e2e8f0', background: '#f8fafc', fontWeight: '600', fontSize: '15px', color: '#1e293b', appearance: 'none', cursor: 'pointer' }}
                     >
                       <option value="">Choose Semester</option>
-                      {getAvailableSemesters().map(sem => (
-                        <option key={sem} value={sem}>{sem}</option>
-                      ))}
+                      {new Date().getMonth() < 6 ? (
+                        <>
+                          <option value="2nd Semester">2nd Semester</option>
+                          <option value="4th Semester">4th Semester</option>
+                          <option value="6th Semester">6th Semester</option>
+                          <option value="8th Semester">8th Semester</option>
+                          <option value="10th Semester">10th Semester</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="1st Semester">1st Semester</option>
+                          <option value="3rd Semester">3rd Semester</option>
+                          <option value="5th Semester">5th Semester</option>
+                          <option value="7th Semester">7th Semester</option>
+                          <option value="9th Semester">9th Semester</option>
+                        </>
+                      )}
                     </select>
                   </div>
 
@@ -2215,9 +2247,23 @@ function TeacherProfile() {
                     style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ddd', outline: 'none' }}
                   >
                     <option value="">Choose Semester</option>
-                    {getAvailableSemesters().map(sem => (
-                      <option key={sem} value={sem}>{sem}</option>
-                    ))}
+                    {new Date().getMonth() < 6 ? (
+                      <>
+                        <option value="2nd Semester">2nd Semester</option>
+                        <option value="4th Semester">4th Semester</option>
+                        <option value="6th Semester">6th Semester</option>
+                        <option value="8th Semester">8th Semester</option>
+                        <option value="10th Semester">10th Semester</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="1st Semester">1st Semester</option>
+                        <option value="3rd Semester">3rd Semester</option>
+                        <option value="5th Semester">5th Semester</option>
+                        <option value="7th Semester">7th Semester</option>
+                        <option value="9th Semester">9th Semester</option>
+                      </>
+                    )}
                   </select>
 
                   <select 

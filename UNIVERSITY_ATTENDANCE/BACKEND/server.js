@@ -242,11 +242,25 @@ app.get('/api/attendance', async (req, res) => {
     if (semester && semester !== 'All') {
       const semStr = semester.toLowerCase();
       if (semStr === 'odd semester' || semStr === 'odd') {
-        query.semester = { $in: ["1", "3", "5", "7", "9", "1st Semester", "3rd Semester", "5th Semester", "7th Semester", "9th Semester"] };
+        query.semester = { $in: ["1", "3", "5", "7", "9", "1st Semester", "3rd Semester", "5th Semester", "7th Semester", "9th Semester", "Odd Semester"] };
       } else if (semStr === 'even semester' || semStr === 'even') {
-        query.semester = { $in: ["2", "4", "6", "8", "10", "2nd Semester", "4th Semester", "6th Semester", "8th Semester", "10th Semester"] };
+        query.semester = { $in: ["2", "4", "6", "8", "10", "2nd Semester", "4th Semester", "6th Semester", "8th Semester", "10th Semester", "Even Semester"] };
       } else {
-        query.semester = semester;
+        const digits = semester.replace(/\D/g, '');
+        if (digits) {
+          const num = parseInt(digits, 10);
+          const isOdd = num % 2 !== 0;
+          query.semester = { $in: [
+            digits,
+            `${digits}st Semester`,
+            `${digits}nd Semester`,
+            `${digits}rd Semester`,
+            `${digits}th Semester`,
+            isOdd ? 'Odd Semester' : 'Even Semester'
+          ] };
+        } else {
+          query.semester = semester;
+        }
       }
     }
     if (course && course !== 'All') query.course = course;

@@ -435,8 +435,23 @@ function StudentDashboard() {
                         }}
                       >
                         <option value="All">All Semesters</option>
-                        <option value="Odd Semester">Odd Semester</option>
-                        <option value="Even Semester">Even Semester</option>
+                        {new Date().getMonth() < 6 ? (
+                          <>
+                            <option value="2nd Semester">2nd Semester</option>
+                            <option value="4th Semester">4th Semester</option>
+                            <option value="6th Semester">6th Semester</option>
+                            <option value="8th Semester">8th Semester</option>
+                            <option value="10th Semester">10th Semester</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="1st Semester">1st Semester</option>
+                            <option value="3rd Semester">3rd Semester</option>
+                            <option value="5th Semester">5th Semester</option>
+                            <option value="7th Semester">7th Semester</option>
+                            <option value="9th Semester">9th Semester</option>
+                          </>
+                        )}
                       </select>
                     </div>
                     <div className="filter-group">
@@ -485,7 +500,9 @@ function StudentDashboard() {
                           {filteredRecords.sort((a,b) => new Date(b.date) - new Date(a.date)).map((r, idx) => (
                             <tr key={idx}>
                               <td>{r.date}</td>
-                              <td style={{ fontSize: '12px', fontWeight: 'bold', color: '#8a2c20' }}>{r.semester}</td>
+                              <td style={{ fontSize: '12px', fontWeight: 'bold', color: '#8a2c20' }}>
+                                {r.semester === 'Odd Semester' ? 'Odd Semester (1, 3, 5, 7, 9)' : (r.semester === 'Even Semester' ? 'Even Semester (2, 4, 6, 8, 10)' : r.semester)}
+                              </td>
                               <td>{r.subject || 'General'}</td>
                               <td>{r.teacherName || 'Admin'}</td>
                               <td>
