@@ -154,9 +154,20 @@ function TeacherProfile() {
     try {
       const days = await api.attendanceDays.getAll(teacherData.department);
       setAttendanceDaysList(days || []);
-      // Seed the baseline set with all IDs present at login — never popup for these
+      
       if (seenDayIdsRef.current === null) {
         seenDayIdsRef.current = new Set((days || []).map(d => d._id || d.id));
+        
+        // Show the latest rule if not shown in this session
+        const latest = days[0];
+        if (latest && sessionStorage.getItem('lastShownDayId_teacher') !== (latest._id || latest.id)) {
+          const dateLabel = new Date(latest.date + 'T00:00:00').toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+          const statusLabel = latest.status === 'off' ? 'OFF (Holiday)' : 'ON (Working Day)';
+          const msg = `${dateLabel}: Set as ${statusLabel} (Notice: ${latest.notice}) for department ${latest.department} (Updated by ${latest.createdBy || 'Admin'})`;
+          setDayAlertPopup({ ...latest, _label: msg });
+          sessionStorage.setItem('lastShownDayId_teacher', latest._id || latest.id);
+          setTimeout(() => setDayAlertPopup(null), 10000);
+        }
       }
     } catch (err) {
       console.error('Error loading attendance days:', err);
@@ -164,25 +175,23 @@ function TeacherProfile() {
   };
 
   // Poll for new day-alert entries every 30 seconds
-  // Only shows popup for entries whose _id was NOT in the baseline set built at login
   useEffect(() => {
     const stored = sessionStorage.getItem('loggedInTeacher');
     if (!stored) return;
     const teacherData = JSON.parse(stored);
     const interval = setInterval(async () => {
-      // Wait until initial load has seeded the baseline
       if (seenDayIdsRef.current === null) return;
       try {
         const current = await api.attendanceDays.getAll(teacherData.department);
         const newEntry = (current || []).find(d => !seenDayIdsRef.current.has(d._id || d.id));
         if (newEntry) {
-          // Add to seen so it only pops once
           seenDayIdsRef.current.add(newEntry._id || newEntry.id);
           const dateLabel = new Date(newEntry.date + 'T00:00:00').toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
           const statusLabel = newEntry.status === 'off' ? 'OFF (Holiday)' : 'ON (Working Day)';
           const msg = `${dateLabel}: Set as ${statusLabel} (Notice: ${newEntry.notice}) for department ${newEntry.department} (Updated by ${newEntry.createdBy || 'Admin'})`;
           setDayAlertPopup({ ...newEntry, _label: msg });
-          setTimeout(() => setDayAlertPopup(null), 6000);
+          sessionStorage.setItem('lastShownDayId_teacher', newEntry._id || newEntry.id);
+          setTimeout(() => setDayAlertPopup(null), 10000);
         }
         setAttendanceDaysList(current || []);
       } catch (e) { /* silent */ }
@@ -1145,6 +1154,7 @@ function TeacherProfile() {
 
   const handleLogout = () => {
     sessionStorage.removeItem('loggedInTeacher');
+    sessionStorage.removeItem('lastShownDayId_teacher');
     navigate('/');
   };
 
@@ -1189,7 +1199,7 @@ function TeacherProfile() {
             <button onClick={() => setDayAlertPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#9ca3af', marginLeft: 'auto', flexShrink: 0 }}>✕</button>
           </div>
           <div style={{ height: '3px', background: '#e5e7eb', borderRadius: '2px', marginTop: '12px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', background: dayAlertPopup.status === 'off' ? '#dc2626' : '#16a34a', animation: 'shrinkBar 6s linear forwards' }}></div>
+            <div style={{ height: '100%', background: dayAlertPopup.status === 'off' ? '#dc2626' : '#16a34a', animation: 'shrinkBar 10s linear forwards' }}></div>
           </div>
         </div>
       )}
@@ -1297,7 +1307,12 @@ function TeacherProfile() {
               <p><strong>Email:</strong> {teacher.email}</p>
               <p><strong>Phone:</strong> {teacher.phone}</p>
               <p><strong>Gender:</strong> {teacher.gender}</p>
-              <p><strong>Joined On:</strong> {teacher.submissionDate}</p>
+              <p><strong>Joined On:</strong> {(() => {
+                const dateVal = teacher.createdAt || teacher.submissionDate;
+                if (!dateVal) return 'N/A';
+                const parsed = new Date(dateVal);
+                return isNaN(parsed.getTime()) ? dateVal : parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+              })()}</p>
               <p><strong>Username:</strong> {teacher.username}</p>
             </div>
           </div>

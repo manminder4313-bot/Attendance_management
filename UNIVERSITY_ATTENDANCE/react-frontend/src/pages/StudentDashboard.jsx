@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { subjectMapping } from '../utils/subjectMapping';
@@ -68,6 +68,10 @@ function StudentDashboard() {
   const [enrollStatusMsg, setEnrollStatusMsg] = useState('');
   const [usbDeviceName, setUsbDeviceName] = useState('');
   const [isScanningActive, setIsScanningActive] = useState(false);
+
+  // Day Alert states
+  const [dayAlertPopup, setDayAlertPopup] = useState(null);
+  const seenDayIdsRef = useRef(null);
 
   const playBeep = (freq = 800, duration = 0.15) => {
     try {
@@ -247,10 +251,50 @@ function StudentDashboard() {
     try {
       const days = await api.attendanceDays.getAll(student.department);
       setAttendanceDaysList(days || []);
+
+      if (seenDayIdsRef.current === null) {
+        seenDayIdsRef.current = new Set((days || []).map(d => d._id || d.id));
+
+        // Show the latest rule if not shown in this session
+        const latest = days[0];
+        if (latest && sessionStorage.getItem('lastShownDayId_student') !== (latest._id || latest.id)) {
+          const dateLabel = new Date(latest.date + 'T00:00:00').toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+          const statusLabel = latest.status === 'off' ? 'OFF (Holiday)' : 'ON (Working Day)';
+          const msg = `${dateLabel}: Set as ${statusLabel} (Notice: ${latest.notice}) for department ${latest.department} (Updated by ${latest.createdBy || 'Admin'})`;
+          setDayAlertPopup({ ...latest, _label: msg });
+          sessionStorage.setItem('lastShownDayId_student', latest._id || latest.id);
+          setTimeout(() => setDayAlertPopup(null), 10000);
+        }
+      }
     } catch (err) {
       console.error('Error loading attendance days:', err);
     }
   };
+
+  // Poll for new day-alert entries every 30 seconds
+  useEffect(() => {
+    const savedStudent = sessionStorage.getItem('loggedInStudent');
+    if (!savedStudent) return;
+    const student = JSON.parse(savedStudent);
+    const interval = setInterval(async () => {
+      if (seenDayIdsRef.current === null) return;
+      try {
+        const current = await api.attendanceDays.getAll(student.department);
+        const newEntry = (current || []).find(d => !seenDayIdsRef.current.has(d._id || d.id));
+        if (newEntry) {
+          seenDayIdsRef.current.add(newEntry._id || newEntry.id);
+          const dateLabel = new Date(newEntry.date + 'T00:00:00').toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+          const statusLabel = newEntry.status === 'off' ? 'OFF (Holiday)' : 'ON (Working Day)';
+          const msg = `${dateLabel}: Set as ${statusLabel} (Notice: ${newEntry.notice}) for department ${newEntry.department} (Updated by ${newEntry.createdBy || 'Admin'})`;
+          setDayAlertPopup({ ...newEntry, _label: msg });
+          sessionStorage.setItem('lastShownDayId_student', newEntry._id || newEntry.id);
+          setTimeout(() => setDayAlertPopup(null), 10000);
+        }
+        setAttendanceDaysList(current || []);
+      } catch (e) { /* silent */ }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchData = async (student, sem, sub) => {
     if (!student) return;
@@ -273,6 +317,7 @@ function StudentDashboard() {
 
   const handleLogout = () => {
     sessionStorage.removeItem('loggedInStudent');
+    sessionStorage.removeItem('lastShownDayId_student');
     navigate('/');
   };
 
@@ -338,6 +383,34 @@ function StudentDashboard() {
 
   return (
     <div className={`dashboard-container ${isSidebarOpen ? 'sidebar-open' : ''}`}>
+      {/* 10-Second Day-Alert Popup */}
+      {dayAlertPopup && (
+        <div style={{
+          position: 'fixed', top: '20px', right: '20px', zIndex: 9999,
+          background: dayAlertPopup.status === 'off' ? '#fef2f2' : '#f0fdf4',
+          border: `2px solid ${dayAlertPopup.status === 'off' ? '#ef4444' : '#22c55e'}`,
+          borderLeft: `6px solid ${dayAlertPopup.status === 'off' ? '#dc2626' : '#16a34a'}`,
+          borderRadius: '12px', padding: '18px 24px', maxWidth: '520px',
+          boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
+          animation: 'slideInRight 0.4s ease'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+            <span style={{ fontSize: '28px', flexShrink: 0 }}>{dayAlertPopup.status === 'off' ? '🛑' : '✅'}</span>
+            <div>
+              <div style={{ fontWeight: '800', fontSize: '15px', color: dayAlertPopup.status === 'off' ? '#991b1b' : '#14532d', marginBottom: '6px' }}>
+                📅 Day Schedule Updated
+              </div>
+              <div style={{ fontSize: '14px', color: '#374151', lineHeight: '1.6' }}>
+                {dayAlertPopup._label}
+              </div>
+            </div>
+            <button onClick={() => setDayAlertPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#9ca3af', marginLeft: 'auto', flexShrink: 0 }}>✕</button>
+          </div>
+          <div style={{ height: '3px', background: '#e5e7eb', borderRadius: '2px', marginTop: '12px', overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: dayAlertPopup.status === 'off' ? '#dc2626' : '#16a34a', animation: 'shrinkBar 10s linear forwards' }}></div>
+          </div>
+        </div>
+      )}
       {/* Sidebar */}
       <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">
@@ -652,6 +725,17 @@ function StudentDashboard() {
                       <div className="info-item">
                         <label style={{ fontSize: '12px', color: '#999', display: 'block' }}>Date of Birth</label>
                         <span style={{ fontWeight: '600' }}>{studentInfo?.dob}</span>
+                      </div>
+                      <div className="info-item">
+                        <label style={{ fontSize: '12px', color: '#999', display: 'block' }}>Joined On</label>
+                        <span style={{ fontWeight: '600' }}>
+                          {(() => {
+                            const dateVal = studentInfo?.createdAt || studentInfo?.registrationDate || studentInfo?.submissionDate;
+                            if (!dateVal) return 'N/A';
+                            const parsed = new Date(dateVal);
+                            return isNaN(parsed.getTime()) ? dateVal : parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                          })()}
+                        </span>
                       </div>
                     </div>
                   </div>

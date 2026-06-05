@@ -70,6 +70,7 @@ function Admin() {
   const [confirmPwd, setConfirmPwd] = useState('');
   const fileInputRef = useRef(null);
   const memberPhotoInputRef = useRef(null);
+  const seenDayIdsRef = useRef(null);
   const [editingMember, setEditingMember] = useState(null); // { id, type }
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [includeCredentials, setIncludeCredentials] = useState(false);
@@ -303,6 +304,21 @@ function Admin() {
       })));
       setAttendanceDaysList(attDays || []);
 
+      if (seenDayIdsRef.current === null) {
+        seenDayIdsRef.current = new Set((attDays || []).map(d => d._id || d.id));
+
+        // Show the latest rule if not shown in this session
+        const latest = attDays?.[0];
+        if (latest && sessionStorage.getItem('lastShownDayId_admin') !== (latest._id || latest.id)) {
+          const dateLabel = new Date(latest.date + 'T00:00:00').toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+          const statusLabel = latest.status === 'off' ? 'OFF (Holiday)' : 'ON (Working Day)';
+          const msg = `${dateLabel}: Set as ${statusLabel} (Notice: ${latest.notice}) for department ${latest.department} (Updated by ${latest.createdBy || 'Admin'})`;
+          setDayAlertPopup({ ...latest, _label: msg });
+          sessionStorage.setItem('lastShownDayId_admin', latest._id || latest.id);
+          setTimeout(() => setDayAlertPopup(null), 10000);
+        }
+      }
+
       // Load notices, courses, and edit requests
       let notices = [];
       let courses = [];
@@ -359,10 +375,10 @@ function Admin() {
         });
       } catch (ne) { console.warn('Notice post failed:', ne.message); }
 
-      // ── Trigger 6-second popup ────────────────────────────────────
+      // ── Trigger 10-second popup ───────────────────────────────────
       const popupDay = saved || payload;
       setDayAlertPopup({ ...popupDay, _label: noticeMsg });
-      setTimeout(() => setDayAlertPopup(null), 6000);
+      setTimeout(() => setDayAlertPopup(null), 10000);
 
       setNewDayDate('');
       setNewDayNotice('');
@@ -373,6 +389,29 @@ function Admin() {
       alert("Error saving day configuration: " + err.message);
     }
   };
+
+  // Poll for new day-alert entries every 30 seconds
+  useEffect(() => {
+    if (!isAdminLoggedIn && !isDepartmentLoggedIn) return;
+    const interval = setInterval(async () => {
+      if (seenDayIdsRef.current === null) return;
+      try {
+        const current = await api.attendanceDays.getAll(isDepartmentLoggedIn ? roleDepartmentData?.department : null);
+        const newEntry = (current || []).find(d => !seenDayIdsRef.current.has(d._id || d.id));
+        if (newEntry) {
+          seenDayIdsRef.current.add(newEntry._id || newEntry.id);
+          const dateLabel = new Date(newEntry.date + 'T00:00:00').toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+          const statusLabel = newEntry.status === 'off' ? 'OFF (Holiday)' : 'ON (Working Day)';
+          const msg = `${dateLabel}: Set as ${statusLabel} (Notice: ${newEntry.notice}) for department ${newEntry.department} (Updated by ${newEntry.createdBy || 'Admin'})`;
+          setDayAlertPopup({ ...newEntry, _label: msg });
+          sessionStorage.setItem('lastShownDayId_admin', newEntry._id || newEntry.id);
+          setTimeout(() => setDayAlertPopup(null), 10000);
+        }
+        setAttendanceDaysList(current || []);
+      } catch (e) { /* silent */ }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [isDepartmentLoggedIn, roleDepartmentData?.department, isAdminLoggedIn]);
 
   const handleDeleteAttendanceDay = async (id) => {
     if (!window.confirm("Are you sure you want to delete this configuration?")) return;
@@ -837,6 +876,7 @@ function Admin() {
     sessionStorage.removeItem('loggedInDepartment');
     sessionStorage.removeItem('loggedInClerk');
     sessionStorage.removeItem('loggedInAdmin');
+    sessionStorage.removeItem('lastShownDayId_admin');
     navigate('/');
   };
 
@@ -1049,7 +1089,7 @@ function Admin() {
             <button onClick={() => setDayAlertPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#9ca3af', marginLeft: 'auto', flexShrink: 0 }}>✕</button>
           </div>
           <div style={{ height: '3px', background: '#e5e7eb', borderRadius: '2px', marginTop: '12px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', background: dayAlertPopup.status === 'off' ? '#dc2626' : '#16a34a', animation: 'shrinkBar 6s linear forwards' }}></div>
+            <div style={{ height: '100%', background: dayAlertPopup.status === 'off' ? '#dc2626' : '#16a34a', animation: 'shrinkBar 10s linear forwards' }}></div>
           </div>
         </div>
       )}
