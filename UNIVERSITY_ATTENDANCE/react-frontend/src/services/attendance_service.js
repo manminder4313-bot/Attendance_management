@@ -8,6 +8,7 @@ export const attendanceService = {
     return fetchApi(`/attendance${query ? `?${query}` : ''}`);
   },
   create: (data) => fetchApi('/attendance', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => fetchApi(`/attendance/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id) => fetchApi(`/attendance/${id}`, { method: 'DELETE' }),
   
   getStats: (attendanceRecords, studentId) => {

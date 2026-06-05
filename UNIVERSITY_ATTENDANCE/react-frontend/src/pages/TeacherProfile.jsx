@@ -5,6 +5,63 @@ import autoTable from 'jspdf-autotable';
 import api from '../services/api';
 import { subjectMapping } from '../utils/subjectMapping';
 
+const matchSemester = (semVal, filterSem) => {
+  if (!filterSem) return true;
+  if (!semVal) return false;
+  const fStr = String(filterSem).toLowerCase();
+  const vStr = String(semVal).toLowerCase();
+  if (fStr === 'odd semester' || fStr === 'odd') {
+    const num = parseInt(vStr.replace(/\D/g, ''), 10);
+    return !isNaN(num) && num % 2 !== 0;
+  }
+  if (fStr === 'even semester' || fStr === 'even') {
+    const num = parseInt(vStr.replace(/\D/g, ''), 10);
+    return !isNaN(num) && num % 2 === 0;
+  }
+  const fDigits = fStr.replace(/\D/g, '');
+  const vDigits = vStr.replace(/\D/g, '');
+  if (fDigits && vDigits) return fDigits === vDigits;
+  return fStr === vStr;
+};
+
+const getAssignedSubjects = (course, filterSem) => {
+  if (!course || !subjectMapping[course]) return [];
+  const fStr = String(filterSem).toLowerCase();
+  
+  if (fStr === 'odd semester' || fStr === 'odd') {
+    let subs = [];
+    Object.keys(subjectMapping[course]).forEach(sem => {
+      const num = parseInt(sem, 10);
+      if (!isNaN(num) && num % 2 !== 0) {
+        subs = [...subs, ...subjectMapping[course][sem]];
+      }
+    });
+    return [...new Set(subs)];
+  }
+  
+  if (fStr === 'even semester' || fStr === 'even') {
+    let subs = [];
+    Object.keys(subjectMapping[course]).forEach(sem => {
+      const num = parseInt(sem, 10);
+      if (!isNaN(num) && num % 2 === 0) {
+        subs = [...subs, ...subjectMapping[course][sem]];
+      }
+    });
+    return [...new Set(subs)];
+  }
+  
+  const semNum = String(filterSem).match(/\d+/)?.[0];
+  if (semNum && subjectMapping[course][semNum]) {
+    return subjectMapping[course][semNum];
+  }
+  
+  let allSubs = [];
+  Object.values(subjectMapping[course]).forEach(arr => {
+    allSubs = [...allSubs, ...arr];
+  });
+  return [...new Set(allSubs)];
+};
+
 function TeacherProfile() {
   const [teacher, setTeacher] = useState(null);
   const [activeTab, setActiveTab] = useState('profile');
@@ -73,6 +130,9 @@ function TeacherProfile() {
   const [enrollFingerProgress, setEnrollFingerProgress] = useState(0);
 
   const [attendanceDaysList, setAttendanceDaysList] = useState([]);
+  const [dayAlertPopup, setDayAlertPopup] = useState(null);
+  // Tracks IDs already present at login — never triggers a popup for these
+  const seenDayIdsRef = useRef(null);
 
   const navigate = useNavigate();
 
@@ -94,10 +154,41 @@ function TeacherProfile() {
     try {
       const days = await api.attendanceDays.getAll(teacherData.department);
       setAttendanceDaysList(days || []);
+      // Seed the baseline set with all IDs present at login — never popup for these
+      if (seenDayIdsRef.current === null) {
+        seenDayIdsRef.current = new Set((days || []).map(d => d._id || d.id));
+      }
     } catch (err) {
       console.error('Error loading attendance days:', err);
     }
   };
+
+  // Poll for new day-alert entries every 30 seconds
+  // Only shows popup for entries whose _id was NOT in the baseline set built at login
+  useEffect(() => {
+    const stored = sessionStorage.getItem('loggedInTeacher');
+    if (!stored) return;
+    const teacherData = JSON.parse(stored);
+    const interval = setInterval(async () => {
+      // Wait until initial load has seeded the baseline
+      if (seenDayIdsRef.current === null) return;
+      try {
+        const current = await api.attendanceDays.getAll(teacherData.department);
+        const newEntry = (current || []).find(d => !seenDayIdsRef.current.has(d._id || d.id));
+        if (newEntry) {
+          // Add to seen so it only pops once
+          seenDayIdsRef.current.add(newEntry._id || newEntry.id);
+          const dateLabel = new Date(newEntry.date + 'T00:00:00').toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+          const statusLabel = newEntry.status === 'off' ? 'OFF (Holiday)' : 'ON (Working Day)';
+          const msg = `${dateLabel}: Set as ${statusLabel} (Notice: ${newEntry.notice}) for department ${newEntry.department} (Updated by ${newEntry.createdBy || 'Admin'})`;
+          setDayAlertPopup({ ...newEntry, _label: msg });
+          setTimeout(() => setDayAlertPopup(null), 6000);
+        }
+        setAttendanceDaysList(current || []);
+      } catch (e) { /* silent */ }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const initFaceAI = async () => {
     if (modelsLoaded || isInitializingAI) return;
@@ -790,16 +881,7 @@ function TeacherProfile() {
   const getAvailableSemesters = () => {
     const month = new Date().getMonth(); // 0-11
     const isEvenSession = month < 6; // Jan to June
-    const sems = [
-      "1st Semester", "2nd Semester", "3rd Semester", "4th Semester",
-      "5th Semester", "6th Semester", "7th Semester", "8th Semester",
-      "9th Semester", "10th Semester"
-    ];
-
-    return sems.filter((_, index) => {
-      const semNum = index + 1;
-      return isEvenSession ? semNum % 2 === 0 : semNum % 2 !== 0;
-    });
+    return isEvenSession ? ["Even Semester", "Odd Semester"] : ["Odd Semester", "Even Semester"];
   };
 
   const getIsDuplicate = () => {
@@ -871,6 +953,21 @@ function TeacherProfile() {
       };
 
       await api.attendance.create(record);
+
+      // Post a notice to the Notice Board so HODs/Clerks are informed
+      const presentCount = Object.values(semesterMarks).filter(v => v === 'Present').length;
+      const totalCount = Object.keys(semesterMarks).length;
+      const formattedDate = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      try {
+        await api.notices.create({
+          title: `📋 Attendance Marked — ${record.subject}`,
+          message: `Prof. ${teacher.fullName} marked attendance for ${record.course} (${semesterFilter}) on ${formattedDate}. Session: ${selectedSession || 'N/A'}. Present: ${presentCount}/${totalCount} students.`,
+          category: 'attendance',
+          department: teacher.department,
+        });
+      } catch (noticeErr) {
+        console.warn('Notice board post failed (non-critical):', noticeErr.message);
+      }
 
       setSaveStatus({ text: `Attendance for ${semesterFilter} saved successfully!`, type: 'success' });
       setCapturedImage(null); 
@@ -1059,12 +1156,39 @@ function TeacherProfile() {
 
     if (selectedCourse && selectedCourse !== 'All' && s.course !== selectedCourse) return false;
     if (semesterFilter === '' || semesterFilter === 'All') return true;
-    const semNum = semesterFilter.split(' ')[0].replace(/[^0-9]/g, '');
-    return String(s.semester) === semNum || String(s.semester) === semesterFilter;
+    return matchSemester(s.semester, semesterFilter);
   });
 
   return (
     <div className="teacher-profile-container">
+      {/* 6-Second Day-Alert Popup */}
+      {dayAlertPopup && (
+        <div style={{
+          position: 'fixed', top: '20px', right: '20px', zIndex: 9999,
+          background: dayAlertPopup.status === 'off' ? '#fef2f2' : '#f0fdf4',
+          border: `2px solid ${dayAlertPopup.status === 'off' ? '#ef4444' : '#22c55e'}`,
+          borderLeft: `6px solid ${dayAlertPopup.status === 'off' ? '#dc2626' : '#16a34a'}`,
+          borderRadius: '12px', padding: '18px 24px', maxWidth: '520px',
+          boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
+          animation: 'slideInRight 0.4s ease'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+            <span style={{ fontSize: '28px', flexShrink: 0 }}>{dayAlertPopup.status === 'off' ? '🛑' : '✅'}</span>
+            <div>
+              <div style={{ fontWeight: '800', fontSize: '15px', color: dayAlertPopup.status === 'off' ? '#991b1b' : '#14532d', marginBottom: '6px' }}>
+                📅 Day Schedule Updated
+              </div>
+              <div style={{ fontSize: '14px', color: '#374151', lineHeight: '1.6' }}>
+                {dayAlertPopup._label}
+              </div>
+            </div>
+            <button onClick={() => setDayAlertPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#9ca3af', marginLeft: 'auto', flexShrink: 0 }}>✕</button>
+          </div>
+          <div style={{ height: '3px', background: '#e5e7eb', borderRadius: '2px', marginTop: '12px', overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: dayAlertPopup.status === 'off' ? '#dc2626' : '#16a34a', animation: 'shrinkBar 6s linear forwards' }}></div>
+          </div>
+        </div>
+      )}
       {saveStatus.text && (
         <div style={{ 
           position: 'fixed', top: '20px', right: '20px', padding: '15px 30px', borderRadius: '8px', zIndex: 1100,
@@ -1408,7 +1532,7 @@ function TeacherProfile() {
                        <option value="">Choose Subject</option>
                        {(() => {
                          const semNum = semesterFilter?.match(/\d+/)?.[0];
-                         const subjects = (subjectMapping[selectedCourse] && semNum) ? subjectMapping[selectedCourse][semNum] : null;
+                         const subjects = getAssignedSubjects(selectedCourse, semesterFilter);
                          if (subjects) return subjects.map(s => <option key={s} value={s}>{s}</option>);
                          return <option value={teacher.primarySubject}>{teacher.primarySubject}</option>;
                        })()}
@@ -2104,7 +2228,7 @@ function TeacherProfile() {
                     <option value="">Choose Subject</option>
                     {(() => {
                       const semNum = historySemesterFilter?.match(/\d+/)?.[0];
-                      const subjects = (subjectMapping[historyCourseFilter] && semNum) ? subjectMapping[historyCourseFilter][semNum] : null;
+                      const subjects = getAssignedSubjects(historyCourseFilter, historySemesterFilter);
                       if (subjects) return subjects.map(s => <option key={s} value={s}>{s}</option>);
                       return <option value={teacher.primarySubject}>{teacher.primarySubject}</option>;
                     })()}
@@ -2114,7 +2238,7 @@ function TeacherProfile() {
                       onClick={() => {
                         const semStudents = students.filter(s => {
                           const semNum = historySemesterFilter.split(' ')[0].replace(/[^0-9]/g, '');
-                          return (String(s.semester) === semNum || String(s.semester) === historySemesterFilter) &&
+                          return matchSemester(s.semester, historySemesterFilter) &&
                                  (historyCourseFilter === 'All' || s.course === historyCourseFilter);
                         });
                         api.attendance.generateClassPDF(semStudents, teacherHistory, historySubjectFilter, historySemesterFilter);

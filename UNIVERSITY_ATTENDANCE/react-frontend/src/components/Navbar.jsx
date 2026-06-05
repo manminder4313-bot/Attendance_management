@@ -73,7 +73,7 @@ function Navbar() {
                 <Link to="/academic-calendar" onClick={() => setIsMobileMenuOpen(false)}>Academic Calendar</Link>
                 <Link to="/choice-based-credit-system" onClick={() => setIsMobileMenuOpen(false)}>Choice Based Credit System</Link>
                 <Link to="/mrsptu-holiday-calendar" onClick={() => setIsMobileMenuOpen(false)}>MRSPTU Holiday Calendar</Link>
-              
+
               </div>
             </div>
             <div className="dropdown">
@@ -100,7 +100,7 @@ function Navbar() {
                 <Link to="/deans-directors" onClick={() => setIsMobileMenuOpen(false)}>Scholarship Cell</Link>
               </div>
             </div>
-            
+
             <div className="dropdown">
               <span>Departments ▾</span>
               <div className="dropdown-content">
@@ -112,7 +112,7 @@ function Navbar() {
                     <Link to="/chem" onClick={() => setIsMobileMenuOpen(false)}>Chemical Engineering</Link>
                     <Link to="/civil" onClick={() => setIsMobileMenuOpen(false)}>Civil Engineering</Link>
                     <Link to="/cse" onClick={() => setIsMobileMenuOpen(false)}>Computer Science & Engineering</Link>
-                    <Link to="/ca" onClick={() => setIsMobileMenuOpen(false)}>Computer Applications</Link>
+                    <Link to="/ca" onClick={() => setIsMobileMenuOpen(false)}>computatioinal science</Link>
                     <Link to="/ee" onClick={() => setIsMobileMenuOpen(false)}>Electrical Engineering</Link>
                     <Link to="/ece" onClick={() => setIsMobileMenuOpen(false)}>Electronics & Communication Engineering</Link>
                     <Link to="/food" onClick={() => setIsMobileMenuOpen(false)}>Food Science & Technology</Link>
@@ -122,11 +122,11 @@ function Navbar() {
                     <Link to="/pharmacy" onClick={() => setIsMobileMenuOpen(false)}>Pharmacy</Link>
                     <Link to="/management" onClick={() => setIsMobileMenuOpen(false)}>Management Studies</Link>
                   </div>
-                </div> 
+                </div>
                 <Link to="/ece" onClick={() => setIsMobileMenuOpen(false)}>GZSCCET</Link>
               </div>
             </div>
-             <div className="dropdown">
+            <div className="dropdown">
               <span>Deans & Directors ▾</span>
               <div className="dropdown-content">
                 <Link to="/deans-directors" onClick={() => setIsMobileMenuOpen(false)}>Central Library </Link>
@@ -148,7 +148,7 @@ function Navbar() {
                 <Link to="/deans-directors" onClick={() => setIsMobileMenuOpen(false)}> Guest House</Link>
               </div>
             </div>
-            
+
             <Link to="#" onClick={() => setIsMobileMenuOpen(false)}>Colleges</Link>
             <Link to="#" onClick={() => setIsMobileMenuOpen(false)}>Sports & Youth</Link>
             <Link to="#" onClick={() => setIsMobileMenuOpen(false)}>Facilities</Link>

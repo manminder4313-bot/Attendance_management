@@ -4,16 +4,16 @@ export const departmentService = {
   getAll: () => fetchApi('/departments'),
   create: (data) => fetchApi('/departments', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => fetchApi(`/departments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  
+
   getCourses: (deptName) => {
     if (!deptName) return [];
     const name = deptName.toLowerCase();
-    
+
     // Inclusive matching for Computer-related departments
-    if (name.includes('computational sciences') || name.includes('computer science') || name.includes('computer applications')) {
+    if (name.includes('computational sciences') || name.includes('computer science') || name.includes('computatioinal science')) {
       return ['B.Tech CSE', 'B.Tech AI&DS', 'BCA', 'MCA', 'BCA-MCA Integrated', 'BA in Computational Sciences', 'BSE. Graphic'];
     }
-    
+
     if (name.includes('mechanical')) return ['B.Tech Mechanical'];
     if (name.includes('civil')) return ['B.Tech Civil'];
     if (name.includes('electrical')) return ['B.Tech Electrical'];
@@ -26,18 +26,18 @@ export const departmentService = {
     if (name.includes('pharmacy')) return ['B.Pharmacy', 'M.Pharmacy'];
     if (name.includes('management') || name.includes('studies')) return ['MBA', 'BBA'];
     if (name.includes('applied science')) return ['B.Sc', 'M.Sc'];
-    
+
     return ['General Course'];
   },
   getSubjects: (deptName) => {
     if (!deptName) return [];
     const name = deptName.toLowerCase();
-    
-    if (name.includes('computational sciences') || name.includes('computer science') || name.includes('computer applications')) {
+
+    if (name.includes('computational sciences') || name.includes('computer science') || name.includes('computatioinal science')) {
       // Return combined subjects for computer fields to cover both cases flexibly
       return [
-        'Data Structures', 'Operating Systems', 'Computer Networks', 'Machine Learning', 
-        'Artificial Intelligence', 'Cyber Security', 'Programming in C', 'Java Programming', 
+        'Data Structures', 'Operating Systems', 'Computer Networks', 'Machine Learning',
+        'Artificial Intelligence', 'Cyber Security', 'Programming in C', 'Java Programming',
         'Database Management Systems', 'Web Development', 'Software Engineering', 'Mobile App Development'
       ];
     }
@@ -77,7 +77,7 @@ export const departmentService = {
     if (name.includes('applied science')) {
       return ['Engineering Physics', 'Engineering Chemistry', 'Engineering Mathematics', 'Numerical Methods', 'Optics', 'Materials Science'];
     }
-    
+
     return ['General Subject'];
   }
 };

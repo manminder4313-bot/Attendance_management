@@ -5,6 +5,44 @@ import { subjectMapping } from '../utils/subjectMapping';
 import { registerDeviceBiometrics, detectUsbBiometricDevice } from '../utils/biometricHelper';
 import './StudentDashboard.css';
 
+const getAssignedSubjects = (course, filterSem) => {
+  if (!course || !subjectMapping[course]) return [];
+  const fStr = String(filterSem).toLowerCase();
+  
+  if (fStr === 'odd semester' || fStr === 'odd') {
+    let subs = [];
+    Object.keys(subjectMapping[course]).forEach(sem => {
+      const num = parseInt(sem, 10);
+      if (!isNaN(num) && num % 2 !== 0) {
+        subs = [...subs, ...subjectMapping[course][sem]];
+      }
+    });
+    return [...new Set(subs)];
+  }
+  
+  if (fStr === 'even semester' || fStr === 'even') {
+    let subs = [];
+    Object.keys(subjectMapping[course]).forEach(sem => {
+      const num = parseInt(sem, 10);
+      if (!isNaN(num) && num % 2 === 0) {
+        subs = [...subs, ...subjectMapping[course][sem]];
+      }
+    });
+    return [...new Set(subs)];
+  }
+  
+  const semNum = String(filterSem).match(/\d+/)?.[0];
+  if (semNum && subjectMapping[course][semNum]) {
+    return subjectMapping[course][semNum];
+  }
+  
+  let allSubs = [];
+  Object.values(subjectMapping[course]).forEach(arr => {
+    allSubs = [...allSubs, ...arr];
+  });
+  return [...new Set(allSubs)];
+};
+
 function StudentDashboard() {
   const [studentInfo, setStudentInfo] = useState(null);
   const [attendanceRecords, setAttendanceRecords] = useState([]);
@@ -272,8 +310,8 @@ function StudentDashboard() {
 
   const semIndex = getSemesterIndex(semesterFilter || studentInfo?.semester);
   
-  // Get predefined subjects based on course and semester index (e.g. "4th Semester" -> "4")
-  const predefinedSubjects = (studentInfo && subjectMapping[studentInfo.course] && subjectMapping[studentInfo.course][semIndex]) || [];
+  // Get predefined subjects based on course and semester (Odd/Even mapping supported)
+  const predefinedSubjects = studentInfo ? getAssignedSubjects(studentInfo.course, semesterFilter || studentInfo?.semester) : [];
   
   // Combine predefined subjects with subjects from existing attendance records
   const subjects = ['All', ...new Set([...predefinedSubjects, ...attendanceRecords.map(r => r.subject || 'General')])];
@@ -397,11 +435,8 @@ function StudentDashboard() {
                         }}
                       >
                         <option value="All">All Semesters</option>
-                        {[1,2,3,4,5,6,7,8,9,10].map(n => (
-                          <option key={n} value={`${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester`}>
-                            {n}{n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester
-                          </option>
-                        ))}
+                        <option value="Odd Semester">Odd Semester</option>
+                        <option value="Even Semester">Even Semester</option>
                       </select>
                     </div>
                     <div className="filter-group">
@@ -498,13 +533,40 @@ function StudentDashboard() {
                       const currentDayOfWeek = new Date(currentYear, currentMonth, day).getDay();
                       const isWeekend = currentDayOfWeek === 0 || currentDayOfWeek === 6;
                       
+                      const calendarOverride = attendanceDaysList.find(d => {
+                        const dVal = new Date(d.date);
+                        if (isNaN(dVal.getTime())) return false;
+                        const overrideStr = `${dVal.getFullYear()}-${String(dVal.getMonth() + 1).padStart(2, '0')}-${String(dVal.getDate()).padStart(2, '0')}`;
+                        return overrideStr === dateStr;
+                      });
+
                       let className = 'calendar-day';
-                      if (dayAbsents > 0) className += ' danger'; 
-                      else if (dayPresents > 0) className += ' active';
-                      else if (isWeekend) className += ' day-off';
+                      let inlineStyle = {};
+                      let dayTitle = '';
+                      
+                      if (calendarOverride) {
+                        if (calendarOverride.status === 'off') {
+                          className += ' holiday-brown';
+                          inlineStyle = { background: '#8b4513', color: 'white', fontWeight: 'bold' };
+                          dayTitle = `Holiday: ${calendarOverride.notice}`;
+                        } else if (calendarOverride.status === 'on') {
+                          className += ' special-workday';
+                          inlineStyle = { background: '#5a56aaff', color: 'white', fontWeight: 'bold' };
+                          dayTitle = `Special Work Day: ${calendarOverride.notice}`;
+                        }
+                      } else if (dayAbsents > 0) {
+                        className += ' danger';
+                        dayTitle = 'Absent';
+                      } else if (dayPresents > 0) {
+                        className += ' active';
+                        dayTitle = 'Present';
+                      } else if (isWeekend) {
+                        className += ' day-off';
+                        dayTitle = 'Weekend Day Off';
+                      }
 
                       return (
-                        <div key={day} className={className} title={dayAbsents > 0 ? 'Absent' : dayPresents > 0 ? 'Present' : isWeekend ? 'Day Off' : ''}>
+                        <div key={day} className={className} style={inlineStyle} title={dayTitle}>
                           {day}
                         </div>
                       );

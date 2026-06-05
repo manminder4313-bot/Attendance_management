@@ -11,6 +11,25 @@ const formatDate = (dateVal) => {
   return isNaN(parsed.getTime()) ? dateVal : parsed.toLocaleDateString('en-GB');
 };
 
+const matchSemester = (semVal, filterSem) => {
+  if (!filterSem) return true;
+  if (!semVal) return false;
+  const fStr = String(filterSem).toLowerCase();
+  const vStr = String(semVal).toLowerCase();
+  if (fStr === 'odd semester' || fStr === 'odd') {
+    const num = parseInt(vStr.replace(/\D/g, ''), 10);
+    return !isNaN(num) && num % 2 !== 0;
+  }
+  if (fStr === 'even semester' || fStr === 'even') {
+    const num = parseInt(vStr.replace(/\D/g, ''), 10);
+    return !isNaN(num) && num % 2 === 0;
+  }
+  const fDigits = fStr.replace(/\D/g, '');
+  const vDigits = vStr.replace(/\D/g, '');
+  if (fDigits && vDigits) return fDigits === vDigits;
+  return fStr === vStr;
+};
+
 function Admin() {
   const [submissions, setSubmissions] = useState([]);
   const [studentSubmissions, setStudentSubmissions] = useState([]);
@@ -30,6 +49,20 @@ function Admin() {
   const [isDeleteMode, setIsDeleteMode] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [dayAlertPopup, setDayAlertPopup] = useState(null); // { day } for 6-sec popup
+
+  // Notice board and dynamic courses states
+  const [noticesList, setNoticesList] = useState([]);
+  const [coursesList, setCoursesList] = useState([]);
+  const [editRequestsList, setEditRequestsList] = useState([]);
+  const [newCourseName, setNewCourseName] = useState('');
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+
+  // Edit attendance state
+  const [selectedAttendanceRecord, setSelectedAttendanceRecord] = useState(null);
+  const [showEditAttendanceModal, setShowEditAttendanceModal] = useState(false);
+  const [attendanceChanges, setAttendanceChanges] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Profile update states
   const [showPwdModal, setShowPwdModal] = useState(false);
@@ -270,6 +303,23 @@ function Admin() {
       })));
       setAttendanceDaysList(attDays || []);
 
+      // Load notices, courses, and edit requests
+      let notices = [];
+      let courses = [];
+      let editRequests = [];
+      try {
+        notices = await api.notices.getAll(isDepartmentLoggedIn ? roleDepartmentData?.department : null);
+        courses = await api.courses.getAll(isDepartmentLoggedIn ? roleDepartmentData?.department : null);
+        editRequests = await api.attendanceEditRequests.getAll({
+          department: isDepartmentLoggedIn ? roleDepartmentData?.department : null
+        });
+      } catch (err) {
+        console.error("Error loading secondary tables:", err);
+      }
+      setNoticesList(notices || []);
+      setCoursesList(courses || []);
+      setEditRequestsList(editRequests || []);
+
       console.log(`📊 Data Loaded: ${teachers.length} Teachers, ${students.length} Students, ${depts.length} Departments`);
     } catch (err) {
       console.error('Error loading data from MongoDB:', err);
@@ -294,11 +344,28 @@ function Admin() {
     };
 
     try {
-      await api.attendanceDays.create(payload);
-      alert("Day configuration saved successfully!");
+      const saved = await api.attendanceDays.create(payload);
+
+      // ── Post to Notice Board ──────────────────────────────────────
+      const dateLabel = new Date(payload.date + 'T00:00:00').toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+      const statusLabel = payload.status === 'off' ? 'OFF (Holiday)' : 'ON (Working Day)';
+      const noticeMsg = `${dateLabel}: Set as ${statusLabel} (Notice: ${payload.notice}) for department ${payload.department} (Updated by ${payload.createdBy})`;
+      try {
+        await api.notices.create({
+          title: `📅 Day ${statusLabel} — ${dateLabel}`,
+          message: noticeMsg,
+          category: 'calendar',
+          department: payload.department,
+        });
+      } catch (ne) { console.warn('Notice post failed:', ne.message); }
+
+      // ── Trigger 6-second popup ────────────────────────────────────
+      const popupDay = saved || payload;
+      setDayAlertPopup({ ...popupDay, _label: noticeMsg });
+      setTimeout(() => setDayAlertPopup(null), 6000);
+
       setNewDayDate('');
       setNewDayNotice('');
-      
       const updatedDays = await api.attendanceDays.getAll(isDepartmentLoggedIn ? roleDepartmentData?.department : null);
       setAttendanceDaysList(updatedDays);
     } catch (err) {
@@ -319,6 +386,328 @@ function Admin() {
       console.error("Failed to delete attendance day:", err);
       alert("Error deleting day configuration.");
     }
+  };
+
+  const handlePdfUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadingPdf(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = reader.result.split(',')[1];
+          const res = await api.uploadHolidayPdf(base64);
+          alert(`Successfully parsed academic calendar!\n${res.message}`);
+          loadSubmissions();
+        } catch (err) {
+          alert('Failed to process calendar PDF: ' + err.message);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error(err);
+      alert('Error loading file: ' + err.message);
+    } finally {
+      setUploadingPdf(false);
+    }
+  };
+
+  const handleProofFileChange = (studentId, file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      setAttendanceChanges(prev => ({
+        ...prev,
+        [studentId]: {
+          ...prev[studentId],
+          proofFile: reader.result
+        }
+      }));
+    };
+  };
+
+  const handleSaveAttendanceEdits = async () => {
+    setSavingEdit(true);
+    try {
+      const changedStudentIds = Object.keys(attendanceChanges);
+      if (changedStudentIds.length === 0) {
+        alert("No changes made.");
+        setShowEditAttendanceModal(false);
+        return;
+      }
+
+      for (const studentId of changedStudentIds) {
+        const change = attendanceChanges[studentId];
+        const student = studentSubmissions.find(s => s._id === studentId || s.enrollmentNumber === studentId);
+        const studentName = student ? student.fullName : studentId;
+
+        if (isClerkLoggedIn) {
+          // Clerk submits request
+          const payload = {
+            attendanceId: selectedAttendanceRecord._id,
+            studentId,
+            studentName,
+            date: selectedAttendanceRecord.date,
+            subject: selectedAttendanceRecord.subject,
+            semester: selectedAttendanceRecord.semester,
+            course: selectedAttendanceRecord.course,
+            department: selectedAttendanceRecord.department,
+            previousStatus: selectedAttendanceRecord.attendance[studentId] || 'Absent',
+            requestedStatus: change.status,
+            proofType: change.proofType || 'Other',
+            proofDescription: change.reason || 'No explanation provided',
+            proofDocument: change.proofFile || '',
+            requestedBy: roleDepartmentData?.headName || 'Clerk',
+            requestedByRole: 'clerk'
+          };
+          await api.attendanceEditRequests.create(payload);
+        } else {
+          // HOD updates directly
+          const payload = {
+            studentId,
+            studentName,
+            newStatus: change.status,
+            hodName: roleDepartmentData?.headName || 'HOD',
+            proofType: change.proofType || 'Other',
+            proofDescription: change.reason || 'HOD Direct Modification',
+            proofDocument: change.proofFile || ''
+          };
+          await api.attendance.update(selectedAttendanceRecord._id, payload);
+        }
+      }
+
+      alert(isClerkLoggedIn ? "Attendance correction requests submitted for HOD approval!" : "Attendance corrected successfully!");
+      setShowEditAttendanceModal(false);
+      setAttendanceChanges({});
+      loadSubmissions();
+    } catch (err) {
+      console.error(err);
+      alert("Error saving edits: " + err.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const renderNoticeBoard = () => {
+    return (
+      <div style={{ background: 'white', padding: '30px', borderRadius: '15px', boxShadow: '0 8px 25px rgba(0,0,0,0.05)' }}>
+        <h3 style={{ borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '20px', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          📢 SYSTEM NOTICE BOARD & NOTIFICATIONS
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', maxHeight: '600px', overflowY: 'auto', paddingRight: '10px' }}>
+          {noticesList.length === 0 ? (
+            <p style={{ textAlign: 'center', padding: '40px', color: '#bbb', fontStyle: 'italic' }}>No recent notifications on the notice board.</p>
+          ) : (
+            noticesList.map(notice => (
+              <div key={notice._id} style={{
+                padding: '20px',
+                borderRadius: '12px',
+                borderLeft: `5px solid ${
+                  notice.category === 'attendance' ? '#3498db' :
+                  notice.category === 'course' ? '#2ecc71' :
+                  notice.category === 'calendar' ? '#8b4513' : '#999'
+                }`,
+                background: '#fcfcfc',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{
+                    fontWeight: 'bold',
+                    fontSize: '15px',
+                    color: notice.category === 'calendar' ? '#8b4513' : 'var(--primary)'
+                  }}>{notice.title}</span>
+                  <span style={{ fontSize: '12px', color: '#aaa' }}>{new Date(notice.date || notice.createdAt).toLocaleString()}</span>
+                </div>
+                <p style={{ margin: 0, fontSize: '14px', color: '#555', lineHeight: '1.5' }}>{notice.message}</p>
+                <div style={{ marginTop: '8px', fontSize: '11px', color: '#999' }}>
+                  Category: <strong style={{ textTransform: 'uppercase' }}>{notice.category}</strong> | Department: {notice.department}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderCoursesManagement = () => {
+    return (
+      <div style={{ background: 'white', padding: '30px', borderRadius: '15px', boxShadow: '0 8px 25px rgba(0,0,0,0.05)' }}>
+        <h3 style={{ borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '20px', color: 'var(--primary)' }}>
+          📚 Course Directory Management
+        </h3>
+        
+        {/* Add Course Form */}
+        <div style={{ background: '#fcfcfc', border: '1px solid #eee', padding: '20px', borderRadius: '12px', marginBottom: '30px' }}>
+          <h4 style={{ margin: '0 0 15px 0', color: '#333' }}>Add New Academic Course</h4>
+          <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+            <div style={{ flex: 1 }}>
+              <input
+                type="text"
+                placeholder="e.g. B.Tech AI & Data Science"
+                value={newCourseName}
+                onChange={(e) => setNewCourseName(e.target.value)}
+                style={{ width: '100%', padding: '10px 15px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '14px' }}
+              />
+            </div>
+            <button
+              onClick={async () => {
+                if (!newCourseName.trim()) return alert("Course name cannot be empty");
+                try {
+                  const dept = isDepartmentLoggedIn ? roleDepartmentData.department : 'Department of Computer Science & Engineering';
+                  await api.courses.create({ name: newCourseName.trim(), department: dept });
+                  alert("Course added successfully!");
+                  setNewCourseName('');
+                  loadSubmissions();
+                } catch (err) {
+                  alert(err.message);
+                }
+              }}
+              style={{ padding: '10px 25px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              ➕ Add Course
+            </button>
+          </div>
+        </div>
+
+        {/* Courses List */}
+        <div>
+          <h4 style={{ margin: '0 0 15px 0', color: '#333' }}>Existing Courses in Department</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '15px' }}>
+            {coursesList.length === 0 ? (
+              <p style={{ color: '#999', fontStyle: 'italic' }}>No courses configured for this department yet.</p>
+            ) : (
+              coursesList.map(course => (
+                <div key={course._id} style={{ padding: '15px 20px', background: '#fafafa', border: '1px solid #eee', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 'bold', color: '#333' }}>{course.name}</div>
+                    <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>{course.department}</div>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm(`Are you sure you want to remove the course '${course.name}'?`)) return;
+                      try {
+                        await api.courses.delete(course._id);
+                        alert("Course removed successfully!");
+                        loadSubmissions();
+                      } catch (err) {
+                        alert(err.message);
+                      }
+                    }}
+                    style={{ background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', fontSize: '18px' }}
+                    title="Delete Course"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderEditRequests = () => {
+    return (
+      <div style={{ background: 'white', padding: '30px', borderRadius: '15px', boxShadow: '0 8px 25px rgba(0,0,0,0.05)' }}>
+        <h3 style={{ borderBottom: '2px solid #eee', paddingBottom: '15px', marginBottom: '20px', color: 'var(--primary)' }}>
+          📋 Clerk Attendance Edit Requests Workflow
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          {editRequestsList.length === 0 ? (
+            <p style={{ textAlign: 'center', padding: '40px', color: '#bbb', fontStyle: 'italic' }}>No attendance edit requests submitted yet.</p>
+          ) : (
+            editRequestsList.map(req => (
+              <div key={req._id} style={{
+                padding: '20px',
+                borderRadius: '12px',
+                border: '1px solid #eee',
+                background: '#fafafa',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
+                  <div>
+                    <h4 style={{ margin: '0 0 5px 0', color: 'var(--primary)' }}>{req.studentName} ({req.course})</h4>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#666' }}>
+                      Subject: <strong>{req.subject}</strong> | Sem: {req.semester} | Class Date: {req.date}
+                    </p>
+                    <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: '#999' }}>
+                      Requested by clerk: <strong>{req.requestedBy}</strong> | Status: <strong style={{
+                        color: req.status === 'approved' ? '#27ae60' : req.status === 'rejected' ? '#e74c3c' : '#f39c12'
+                      }}>{req.status.toUpperCase()}</strong>
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '13px', color: '#888' }}>
+                      Status Change: <strong style={{ color: '#e74c3c' }}>{req.previousStatus}</strong> ➡️ <strong style={{ color: '#27ae60' }}>{req.requestedStatus}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ background: '#f0f4f8', padding: '15px', borderRadius: '8px', fontSize: '13px', color: '#555', marginBottom: '15px' }}>
+                  <strong>Proof Type:</strong> {req.proofType} <br/>
+                  <strong>Explanation:</strong> {req.proofDescription}
+                  {req.proofDocument && (
+                    <div style={{ marginTop: '10px' }}>
+                      <strong>Supporting Attachment:</strong> <br/>
+                      <img
+                        src={req.proofDocument}
+                        alt="Proof Document"
+                        style={{ maxWidth: '100%', maxHeight: '200px', border: '1px solid #ccc', borderRadius: '4px', marginTop: '5px', objectFit: 'contain' }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {req.status === 'pending' && !isClerkLoggedIn && (
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("Approve this correction and apply to database?")) return;
+                        try {
+                          await api.attendanceEditRequests.approve(req._id, roleDepartmentData?.headName || 'HOD');
+                          alert("Correction approved and attendance database updated!");
+                          loadSubmissions();
+                        } catch (err) {
+                          alert(err.message);
+                        }
+                      }}
+                      style={{ padding: '8px 20px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      Approve ✅
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("Reject this correction request?")) return;
+                        try {
+                          await api.attendanceEditRequests.reject(req._id, roleDepartmentData?.headName || 'HOD');
+                          alert("Correction request rejected!");
+                          loadSubmissions();
+                        } catch (err) {
+                          alert(err.message);
+                        }
+                      }}
+                      style={{ padding: '8px 20px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      Reject ❌
+                    </button>
+                  </div>
+                )}
+
+                {req.status !== 'pending' && (
+                  <div style={{ textAlign: 'right', fontSize: '12px', color: '#888' }}>
+                    Processed by HOD: <strong>{req.processedBy}</strong> on {new Date(req.processedAt).toLocaleString()}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
   };
 
   const compressImage = (file, callback) => {
@@ -527,7 +916,7 @@ function Admin() {
   const filteredStudents = baseStudents.filter(s =>
     (isDepartmentLoggedIn || !studentDeptFilter || s.department === studentDeptFilter) &&
     (s.course === courseFilter) &&
-    (s.semester === semesterFilter || String(s.semester).replace(/\D/g, '') === semesterFilter.replace(/\D/g, ''))
+    matchSemester(s.semester, semesterFilter)
   )
     .sort((a, b) => (a.enrollmentNumber || '').localeCompare(b.enrollmentNumber || '', undefined, { numeric: true }));
 
@@ -636,25 +1025,31 @@ function Admin() {
         </div>
       </div>
 
-      {/* Holiday / Day Off Alerts Banner */}
-      {attendanceDaysList && attendanceDaysList.length > 0 && (
+      {/* 6-Second Animated Day-Change Popup */}
+      {dayAlertPopup && (
         <div style={{
-          background: '#fffbeb',
-          borderLeft: '6px solid #d97706',
-          padding: '15px 20px',
-          borderRadius: '8px',
-          marginBottom: '20px',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.05)'
+          position: 'fixed', top: '20px', right: '20px', zIndex: 9999,
+          background: dayAlertPopup.status === 'off' ? '#fef2f2' : '#f0fdf4',
+          border: `2px solid ${dayAlertPopup.status === 'off' ? '#ef4444' : '#22c55e'}`,
+          borderLeft: `6px solid ${dayAlertPopup.status === 'off' ? '#dc2626' : '#16a34a'}`,
+          borderRadius: '12px', padding: '18px 24px', maxWidth: '520px',
+          boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
+          animation: 'slideInRight 0.4s ease'
         }}>
-          <h4 style={{ margin: '0 0 8px 0', color: '#b45309', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px' }}>
-            <span>⚠️</span> Active Calendar Overrides (Holidays / Special Working Days)
-          </h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '14px', color: '#78350f' }}>
-            {attendanceDaysList.slice(0, 3).map(day => (
-              <div key={day._id || day.id}>
-                📅 <strong>{formatDate(day.date)}</strong>: Set as <strong style={{ color: day.status === 'off' ? '#dc2626' : '#16a34a' }}>{day.status.toUpperCase() === 'OFF' ? 'OFF (Holiday)' : 'ON (Working Day)'}</strong> (Notice: <em>{day.notice}</em>) for department <strong>{day.department}</strong> (Updated by {day.createdBy})
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+            <span style={{ fontSize: '28px', flexShrink: 0 }}>{dayAlertPopup.status === 'off' ? '🛑' : '✅'}</span>
+            <div>
+              <div style={{ fontWeight: '800', fontSize: '15px', color: dayAlertPopup.status === 'off' ? '#991b1b' : '#14532d', marginBottom: '6px' }}>
+                📅 Day Schedule Updated
               </div>
-            ))}
+              <div style={{ fontSize: '14px', color: '#374151', lineHeight: '1.6' }}>
+                {dayAlertPopup._label}
+              </div>
+            </div>
+            <button onClick={() => setDayAlertPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#9ca3af', marginLeft: 'auto', flexShrink: 0 }}>✕</button>
+          </div>
+          <div style={{ height: '3px', background: '#e5e7eb', borderRadius: '2px', marginTop: '12px', overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: dayAlertPopup.status === 'off' ? '#dc2626' : '#16a34a', animation: 'shrinkBar 6s linear forwards' }}></div>
           </div>
         </div>
       )}
@@ -704,6 +1099,25 @@ function Admin() {
             style={{ padding: '10px 20px', border: 'none', background: 'none', borderBottom: activeTab === 'attendance_days' ? '3px solid var(--primary)' : 'none', color: activeTab === 'attendance_days' ? 'var(--primary)' : '#666', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>
             Day Off/On Manager
           </button>
+          <button
+            onClick={() => { setActiveTab('notice_board'); setSelectedIds([]); setIsDeleteMode(false); }}
+            style={{ padding: '10px 20px', border: 'none', background: 'none', borderBottom: activeTab === 'notice_board' ? '3px solid var(--primary)' : 'none', color: activeTab === 'notice_board' ? 'var(--primary)' : '#666', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>
+            Notice Board 📢
+          </button>
+          {(isDepartmentLoggedIn || isAdminLoggedIn) && (
+            <button
+              onClick={() => { setActiveTab('courses_management'); setSelectedIds([]); setIsDeleteMode(false); }}
+              style={{ padding: '10px 20px', border: 'none', background: 'none', borderBottom: activeTab === 'courses_management' ? '3px solid var(--primary)' : 'none', color: activeTab === 'courses_management' ? 'var(--primary)' : '#666', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>
+              Courses Directory 📚
+            </button>
+          )}
+          {isDepartmentLoggedIn && (
+            <button
+              onClick={() => { setActiveTab('edit_requests'); setSelectedIds([]); setIsDeleteMode(false); }}
+              style={{ padding: '10px 20px', border: 'none', background: 'none', borderBottom: activeTab === 'edit_requests' ? '3px solid var(--primary)' : 'none', color: activeTab === 'edit_requests' ? 'var(--primary)' : '#666', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>
+              Edit Requests 📋
+            </button>
+          )}
         </div>
 
         <div className="admin-filters">
@@ -742,11 +1156,8 @@ function Admin() {
               </select>
               <select value={semesterFilter} onChange={(e) => { setSemesterFilter(e.target.value); setSelectedIds([]); }} style={{ padding: '8px 15px', borderRadius: '6px', border: '1px solid #ccc', outline: 'none' }}>
                 <option value="">Select Semester</option>
-                {(new Date().getMonth() >= 6 ? [1, 3, 5, 7, 9] : [2, 4, 6, 8, 10]).map(n => (
-                  <option key={n} value={`${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester`}>
-                    {n}{n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester
-                  </option>
-                ))}
+                <option value="Odd Semester">Odd Semester</option>
+                <option value="Even Semester">Even Semester</option>
               </select>
             </div>
           ) : null}
@@ -768,7 +1179,7 @@ function Admin() {
             <p style={{ color: '#666', margin: 0 }}>Please select {!isDepartmentLoggedIn && !studentDeptFilter ? 'a Department, ' : ''}a <strong>Course</strong> and <strong>Semester</strong> to view the student list.</p>
           </div>
         ) : (
-          (((activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? hodSubmissions : activeTab === 'clerks' ? baseClerks : adminSubmissions).length === 0 && !isLoading) && activeTab !== 'attendance_days') ? (
+          (((activeTab === 'teachers' ? filteredTeachers : activeTab === 'students' ? filteredStudents : activeTab === 'departments' ? hodSubmissions : activeTab === 'clerks' ? baseClerks : adminSubmissions).length === 0 && !isLoading) && activeTab !== 'attendance_days' && activeTab !== 'notice_board' && activeTab !== 'courses_management' && activeTab !== 'edit_requests') ? (
             <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-light)', fontStyle: 'italic' }}>
               No {activeTab} submissions found.
             </div>
@@ -1056,6 +1467,12 @@ function Admin() {
                   ))}
                 </tbody>
               </table>
+            ) : activeTab === 'notice_board' ? (
+              renderNoticeBoard()
+            ) : activeTab === 'courses_management' ? (
+              renderCoursesManagement()
+            ) : activeTab === 'edit_requests' ? (
+              renderEditRequests()
             ) : activeTab === 'attendance_days' ? (
               <div style={{ padding: '30px' }}>
                 <div className="admin-days-grid">
@@ -1132,6 +1549,48 @@ function Admin() {
                         Save Configuration
                       </button>
                     </form>
+                    {isAdminLoggedIn && (
+                      <div style={{ marginTop: '20px', borderTop: '2px dashed #eee', paddingTop: '20px' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '14px', color: 'var(--primary)' }}>
+                          📅 Bulk Import Holidays (PDF Calendar)
+                        </label>
+                        <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#666' }}>
+                          Upload the official academic calendar PDF. Dates will be extracted, marked as off-days, and broadcasted to the notice board automatically.
+                        </p>
+                        <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
+                          <input
+                            type="file"
+                            accept=".pdf"
+                            onChange={handlePdfUpload}
+                            style={{ display: 'none' }}
+                            id="pdf-holiday-upload"
+                            disabled={uploadingPdf}
+                          />
+                          <label
+                            htmlFor="pdf-holiday-upload"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '10px',
+                              padding: '12px',
+                              background: uploadingPdf ? '#aaa' : '#8b4513',
+                              color: 'white',
+                              borderRadius: '8px',
+                              cursor: uploadingPdf ? 'not-allowed' : 'pointer',
+                              fontWeight: 'bold',
+                              fontSize: '14px',
+                              border: 'none',
+                              textAlign: 'center',
+                              boxShadow: '0 4px 10px rgba(139, 69, 19, 0.2)',
+                              transition: 'all 0.3s'
+                            }}
+                          >
+                            {uploadingPdf ? '⏳ Parsing & Loading PDF...' : '📄 Upload Holiday PDF Calendar'}
+                          </label>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* List of rules */}
@@ -1217,14 +1676,8 @@ function Admin() {
                       style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', outline: 'none', background: 'white' }}
                     >
                       <option value="">-- Choose Semester --</option>
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => {
-                        const name = `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Semester`;
-                        return <option key={name} value={name}>{name}</option>
-                      })}
-                      {[1, 2, 3, 4,].map(n => {
-                        const name = `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} Year`;
-                        return <option key={name} value={name}>{name}</option>
-                      })}
+                      <option value="Odd Semester">Odd Semester</option>
+                      <option value="Even Semester">Even Semester</option>
                     </select>
                   </div>
                   <div style={{ flex: 1 }}>
@@ -1236,7 +1689,7 @@ function Admin() {
                     >
                       <option value="All">All Subjects</option>
                       {Array.from(new Set(attendanceRecords
-                        .filter(r => r.course === statsCourseFilter && (r.semester === statsSemesterFilter || String(r.semester).replace(/\D/g, '') === statsSemesterFilter.replace(/\D/g, '')))
+                        .filter(r => r.course === statsCourseFilter && matchSemester(r.semester, statsSemesterFilter))
                         .map(r => r.subject)
                         .filter(Boolean)
                       )).sort().map(sub => (
@@ -1260,7 +1713,7 @@ function Admin() {
 
                         // Filter records for this semester, department, COURSE, and SUBJECT
                         const semRecords = attendanceRecords.filter(r =>
-                          (r.semester === semesterName || String(r.semester).replace(/\D/g, '') === semesterName.replace(/\D/g, '')) &&
+                          matchSemester(r.semester, semesterName) &&
                           r.course === statsCourseFilter &&
                           (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter) &&
                           (!isDepartmentLoggedIn || r.department === roleDepartmentData.department)
@@ -1268,7 +1721,7 @@ function Admin() {
 
                         // Filter students for this semester, department, and COURSE
                         const semStudents = studentSubmissions.filter(s =>
-                          (s.semester === semesterName || String(s.semester).replace(/\D/g, '') === semesterName.replace(/\D/g, '')) &&
+                          matchSemester(s.semester, semesterName) &&
                           s.course === statsCourseFilter &&
                           (!isDepartmentLoggedIn || api.departments.getCourses(roleDepartmentData.department).includes(s.course))
                         );
@@ -1342,7 +1795,7 @@ function Admin() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         {attendanceRecords
                           .filter(r =>
-                            (r.semester === statsSemesterFilter || String(r.semester).replace(/\D/g, '') === statsSemesterFilter.replace(/\D/g, '')) &&
+                            matchSemester(r.semester, statsSemesterFilter) &&
                             r.course === statsCourseFilter &&
                             (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter) &&
                             (!isDepartmentLoggedIn || r.department === roleDepartmentData.department)
@@ -1359,16 +1812,29 @@ function Admin() {
                                     <span style={{ color: 'var(--primary)', fontWeight: '600' }}>{record.dateDisplay}</span> • Prof. {record.teacherName} • Session: {record.session || 'N/A'}
                                   </div>
                                 </div>
-                                <div style={{ textAlign: 'right' }}>
-                                  <div style={{ padding: '6px 15px', borderRadius: '20px', background: '#e8f5e9', color: '#2e7d32', fontSize: '13px', fontWeight: 'bold', display: 'inline-block' }}>
-                                    {presentCount} / {totalCount} Students Present
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ padding: '6px 15px', borderRadius: '20px', background: '#e8f5e9', color: '#2e7d32', fontSize: '13px', fontWeight: 'bold', display: 'inline-block' }}>
+                                      {presentCount} / {totalCount} Students Present
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: '#aaa', marginTop: '5px' }}>ID: #{record.id}</div>
                                   </div>
-                                  <div style={{ fontSize: '11px', color: '#aaa', marginTop: '5px' }}>ID: #{record.id}</div>
+                                  {isDepartmentLoggedIn && (
+                                    <button 
+                                      onClick={() => {
+                                        setSelectedAttendanceRecord(record);
+                                        setShowEditAttendanceModal(true);
+                                      }}
+                                      style={{ padding: '8px 15px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+                                    >
+                                      ✏️ Edit
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             );
                           })}
-                        {attendanceRecords.filter(r => (r.semester === statsSemesterFilter || String(r.semester).replace(/\D/g, '') === statsSemesterFilter.replace(/\D/g, '')) && r.course === statsCourseFilter && (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter)).length === 0 && (
+                        {attendanceRecords.filter(r => matchSemester(r.semester, statsSemesterFilter) && r.course === statsCourseFilter && (statsSubjectFilter === 'All' || r.subject === statsSubjectFilter)).length === 0 && (
                           <p style={{ textAlign: 'center', padding: '40px', color: '#bbb', fontStyle: 'italic' }}>No attendance records found for this selection.</p>
                         )}
                       </div>
@@ -1413,6 +1879,167 @@ function Admin() {
               style={{ marginTop: '20px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '13px' }}>
               Cancel Export
             </button>
+          </div>
+        </div>
+      )}
+
+      {showEditAttendanceModal && selectedAttendanceRecord && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: '20px', backdropFilter: 'blur(4px)' }}>
+          <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '750px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}>
+            <h3 style={{ color: 'var(--primary)', borderBottom: '2px solid #eee', paddingBottom: '15px', marginTop: 0 }}>
+              ✏️ Edit Attendance: {selectedAttendanceRecord.subject}
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', margin: '15px 0 25px 0', fontSize: '14px', background: '#fafafa', padding: '15px', borderRadius: '8px' }}>
+              <div><strong>Course:</strong> {selectedAttendanceRecord.course}</div>
+              <div><strong>Semester:</strong> {selectedAttendanceRecord.semester}</div>
+              <div><strong>Date:</strong> {selectedAttendanceRecord.dateDisplay}</div>
+              <div><strong>Session:</strong> {selectedAttendanceRecord.session || 'N/A'}</div>
+            </div>
+
+            <h4 style={{ color: '#333', marginBottom: '15px' }}>Student Roll call</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '30px' }}>
+              {(() => {
+                const classStudents = studentSubmissions.filter(s => 
+                  s.course === selectedAttendanceRecord.course && 
+                  matchSemester(s.semester, selectedAttendanceRecord.semester)
+                );
+
+                if (classStudents.length === 0) {
+                  return <p style={{ color: '#999', fontStyle: 'italic' }}>No enrolled students found in this course & semester.</p>;
+                }
+
+                return classStudents.map(student => {
+                  const sId = student._id || student.enrollmentNumber;
+                  const currentDbStatus = selectedAttendanceRecord.attendance[sId] || 'Absent';
+                  const currentChange = attendanceChanges[sId];
+                  const activeStatus = currentChange ? currentChange.status : currentDbStatus;
+                  const isChanged = activeStatus !== currentDbStatus;
+
+                  return (
+                    <div key={student._id} style={{ border: '1px solid #eee', padding: '15px', borderRadius: '10px', background: isChanged ? '#fffdea' : '#fff' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <strong>{student.fullName}</strong> <span style={{ color: '#888', fontSize: '12px' }}>({student.rollNumber || student.enrollmentNumber})</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <button
+                            onClick={() => {
+                              const nextStatus = activeStatus === 'Present' ? 'Absent' : 'Present';
+                              if (nextStatus === currentDbStatus) {
+                                // Revert change
+                                const copy = { ...attendanceChanges };
+                                delete copy[sId];
+                                setAttendanceChanges(copy);
+                              } else {
+                                setAttendanceChanges(prev => ({
+                                  ...prev,
+                                  [sId]: {
+                                    ...prev[sId],
+                                    status: nextStatus
+                                  }
+                                }));
+                              }
+                            }}
+                            style={{
+                              padding: '6px 15px',
+                              borderRadius: '20px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontWeight: 'bold',
+                              fontSize: '12px',
+                              background: activeStatus === 'Present' ? '#2ecc71' : '#e74c3c',
+                              color: 'white'
+                            }}
+                          >
+                            {activeStatus} {isChanged ? '✏️' : ''}
+                          </button>
+                        </div>
+                      </div>
+
+                      {isChanged && (
+                        <div style={{ marginTop: '15px', borderTop: '1px dashed #ddd', paddingTop: '15px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '15px', alignItems: 'center' }}>
+                            <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#555' }}>Proof Category:</label>
+                            <select
+                              value={currentChange.proofType || 'Other'}
+                              onChange={(e) => {
+                                setAttendanceChanges(prev => ({
+                                  ...prev,
+                                  [sId]: {
+                                    ...prev[sId],
+                                    proofType: e.target.value
+                                  }
+                                }));
+                              }}
+                              style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc' }}
+                            >
+                              <option value="Medical Leave">Medical Leave</option>
+                              <option value="Duty Leave">Duty Leave</option>
+                              <option value="Special Permission">Special Permission</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '15px', alignItems: 'flex-start' }}>
+                            <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#555', marginTop: '6px' }}>Reason/Proof Detail:</label>
+                            <textarea
+                              placeholder="Provide description of proof/reason..."
+                              value={currentChange.reason || ''}
+                              onChange={(e) => {
+                                setAttendanceChanges(prev => ({
+                                  ...prev,
+                                  [sId]: {
+                                    ...prev[sId],
+                                    reason: e.target.value
+                                  }
+                                }));
+                              }}
+                              style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc', height: '60px', resize: 'vertical' }}
+                              required
+                            />
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '15px', alignItems: 'center' }}>
+                            <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#555' }}>Upload Proof File:</label>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => handleProofFileChange(sId, e.target.files[0])}
+                              style={{ fontSize: '12px' }}
+                            />
+                          </div>
+                          {currentChange.proofFile && (
+                            <div style={{ marginLeft: '150px' }}>
+                              <img src={currentChange.proofFile} alt="Preview" style={{ maxWidth: '100px', maxHeight: '100px', border: '1px solid #ccc', borderRadius: '4px' }} />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
+              <button
+                onClick={() => {
+                  setShowEditAttendanceModal(false);
+                  setAttendanceChanges({});
+                }}
+                style={{ padding: '10px 20px', background: '#eee', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                disabled={savingEdit}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveAttendanceEdits}
+                style={{ padding: '10px 25px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                disabled={savingEdit}
+              >
+                {savingEdit ? 'Saving...' : isClerkLoggedIn ? 'Submit Edit Requests 🚀' : 'Save Changes Directly ✅'}
+              </button>
+            </div>
           </div>
         </div>
       )}
