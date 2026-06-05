@@ -1058,7 +1058,7 @@ function Admin() {
               </table>
             ) : activeTab === 'attendance_days' ? (
               <div style={{ padding: '30px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px' }}>
+                <div className="admin-days-grid">
                   {/* Create rule Form */}
                   <div style={{ background: '#f8f9fa', padding: '25px', borderRadius: '15px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
                     <h3 style={{ color: 'var(--primary)', marginBottom: '20px', marginTop: 0 }}>Configure Day Off/On Status</h3>
@@ -1195,7 +1195,7 @@ function Admin() {
             ) : activeTab === 'attendance_stats' ? (
               <div style={{ padding: '30px' }}>
                 {/* Filter Selection Panel */}
-                <div style={{ background: '#f8f9fa', padding: '25px', borderRadius: '15px', marginBottom: '30px', display: 'flex', gap: '20px', alignItems: 'center', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+                <div className="admin-stats-filters">
                   <div style={{ flex: 1 }}>
                     <label style={{ display: 'block', marginBottom: '8px', color: 'var(--primary)', fontWeight: 'bold', fontSize: '14px' }}>Select Course</label>
                     <select
@@ -1382,7 +1382,7 @@ function Admin() {
 
       {showPdfModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000 }}>
-          <div style={{ background: 'white', padding: '40px', borderRadius: '15px', width: '450px', boxShadow: '0 15px 40px rgba(0,0,0,0.3)', textAlign: 'center' }}>
+          <div style={{ background: 'white', padding: '40px', borderRadius: '15px', width: '90%', maxWidth: '450px', boxShadow: '0 15px 40px rgba(0,0,0,0.3)', textAlign: 'center' }}>
             <div style={{ fontSize: '40px', marginBottom: '15px' }}>📄</div>
             <h3 style={{ color: 'var(--primary)', marginBottom: '10px' }}>Export PDF Report</h3>
             <p style={{ color: '#666', marginBottom: '25px', fontSize: '15px' }}>
@@ -1419,7 +1419,7 @@ function Admin() {
 
       {showPwdModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '400px', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+          <div style={{ background: 'white', padding: '30px', borderRadius: '12px', width: '90%', maxWidth: '400px', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
             <h3 style={{ marginBottom: '20px', color: 'var(--primary)' }}>Change Password</h3>
 
             <form onSubmit={handlePasswordChange}>
@@ -1469,7 +1469,7 @@ function Admin() {
           <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', position: 'relative' }}>
             <button onClick={() => setShowTeacherModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
 
-            <div style={{ display: 'flex', gap: '25px', borderBottom: '2px solid #eee', paddingBottom: '20px', marginBottom: '20px' }}>
+            <div className="admin-modal-header">
               <img src={selectedTeacher.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '120px', height: '120px', borderRadius: '12px', objectFit: 'cover', border: '3px solid var(--primary)' }} />
               <div style={{ flex: 1 }}>
                 {isEditingDetails ? (
@@ -1609,7 +1609,7 @@ function Admin() {
           <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', position: 'relative' }}>
             <button onClick={() => setShowStudentModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
 
-            <div style={{ display: 'flex', gap: '25px', borderBottom: '2px solid #eee', paddingBottom: '20px', marginBottom: '20px' }}>
+            <div className="admin-modal-header">
               <img src={selectedStudent.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '110px', height: '110px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--primary)' }} />
               <div style={{ flex: 1 }}>
                 {isEditingDetails ? (
@@ -1702,7 +1702,7 @@ function Admin() {
           <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', position: 'relative' }}>
             <button onClick={() => setShowDeptModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
 
-            <div style={{ display: 'flex', gap: '25px', borderBottom: '2px solid #eee', paddingBottom: '20px', marginBottom: '20px' }}>
+            <div className="admin-modal-header">
               <img src={selectedDept.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '110px', height: '110px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--primary)' }} />
               <div style={{ flex: 1 }}>
                 <h2 style={{ margin: '0 0 5px 0', color: 'var(--primary)', fontSize: '26px' }}>{selectedDept.department}</h2>
@@ -1744,7 +1744,7 @@ function Admin() {
           <div style={{ background: 'white', borderRadius: '15px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', padding: '30px', position: 'relative' }}>
             <button onClick={() => setShowAdminModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#666' }}>&times;</button>
 
-            <div style={{ display: 'flex', gap: '25px', borderBottom: '2px solid #eee', paddingBottom: '20px', marginBottom: '20px' }}>
+            <div className="admin-modal-header">
               <img src={selectedAdmin.profilePhoto || '/IMAGES/logo.webp'} style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--primary)' }} />
               <div style={{ flex: 1 }}>
                 <h2 style={{ margin: '0 0 5px 0', color: 'var(--primary)', fontSize: '24px' }}>{selectedAdmin.fullName || 'Admin User'}</h2>

@@ -84,6 +84,7 @@
   margin-left: var(--sidebar-width);
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 /* Topbar */
@@ -182,6 +183,7 @@
   display: flex;
   flex-direction: column;
   gap: 30px;
+  min-width: 0;
 }
 
 .card {
@@ -281,6 +283,7 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 0;
 }
 
 .calendar-card {
@@ -512,5 +515,140 @@
 @media (max-width: 1200px) {
   .content-wrapper {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Sidebar toggle button (hidden by default) */
+.sidebar-toggle-btn {
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 24px;
+  height: 18px;
+  cursor: pointer;
+  z-index: 1010;
+}
+
+.sidebar-toggle-btn div {
+  width: 100%;
+  height: 3px;
+  background-color: var(--primary-color);
+  border-radius: 2px;
+  transition: all 0.3s ease-in-out;
+}
+
+.sidebar-toggle-btn.open .bar1 {
+  transform: translateY(7.5px) rotate(45deg);
+}
+
+.sidebar-toggle-btn.open .bar2 {
+  opacity: 0;
+}
+
+.sidebar-toggle-btn.open .bar3 {
+  transform: translateY(-7.5px) rotate(-45deg);
+}
+
+/* Sidebar Overlay */
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 99;
+}
+
+@media (max-width: 900px) {
+  :root {
+    --sidebar-width: 0px;
+  }
+  
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+    width: 260px;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.15);
+  }
+  
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  
+  .main-content {
+    margin-left: 0;
+    width: 100%;
+  }
+  
+  .sidebar-toggle-btn {
+    display: flex;
+    margin-right: 15px;
+  }
+  
+  .topbar {
+    padding: 0 15px;
+    justify-content: flex-start;
+    gap: 15px;
+  }
+  
+  .search-container {
+    width: 100%;
+    max-width: 250px;
+  }
+  
+  .user-profile {
+    margin-left: auto;
+  }
+  
+  .profile-info span {
+    display: none; /* Hide name on small screens */
+  }
+  
+  .content-wrapper {
+    padding: 15px;
+    gap: 15px;
+  }
+  
+  .card {
+    padding: 15px;
+  }
+  
+  .left-section {
+    gap: 15px;
+  }
+}
+
+@media (max-width: 768px) {
+  .filters-grid {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  
+  .search-btn {
+    align-self: stretch;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 576px) {
+  .search-container {
+    display: none; /* Hide search input on mobile */
+  }
+}
+
+@media (max-width: 480px) {
+  .calendar-grid {
+    gap: 2px;
+  }
+  .calendar-day {
+    padding: 6px 0;
+    font-size: 11px;
+  }
+  .calendar-day-name {
+    font-size: 11px;
+  }
+  .card.calendar-card {
+    padding: 10px;
   }
 }

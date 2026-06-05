@@ -1064,7 +1064,7 @@ function TeacherProfile() {
   });
 
   return (
-    <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto', minHeight: '80vh' }}>
+    <div className="teacher-profile-container">
       {saveStatus.text && (
         <div style={{ 
           position: 'fixed', top: '20px', right: '20px', padding: '15px 30px', borderRadius: '8px', zIndex: 1100,
@@ -1219,8 +1219,9 @@ function TeacherProfile() {
             ) : (filteredBySemester.length === 0 && !isLoadingStudents) ? (
               <p style={{ textAlign: 'center', padding: '40px', color: '#999', fontStyle: 'italic' }}>No students found {semesterFilter && semesterFilter !== 'All' ? `for ${semesterFilter}` : 'in your department'}.</p>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
+              <div className="table-responsive">
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
                   <tr style={{ background: '#f8f9fa', textTransform: 'uppercase', fontSize: '13px' }}>
                     <th style={thStyle}>Reg. Photo</th>
                     <th style={thStyle}>Enrolled Face</th>
@@ -1280,6 +1281,7 @@ function TeacherProfile() {
                   )}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         )}
@@ -1317,12 +1319,12 @@ function TeacherProfile() {
                 <>
                   <div style={{ background: '#fff', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #edf2f7', overflow: 'hidden', marginBottom: '30px' }}>
               {/* Header & Mode Switcher */}
-              <div style={{ padding: '25px 30px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(to right, #fcfcfc, #fff)' }}>
+              <div className="teacher-attendance-header">
                 <div>
                   <h3 style={{ color: '#660000', margin: 0, fontSize: '1.6rem', fontWeight: '800', letterSpacing: '-0.5px' }}>Attendance Management</h3>
                   <p style={{ color: '#64748b', margin: '5px 0 0 0', fontSize: '14px' }}>Session management and automated student verification</p>
                 </div>
-                <div style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <div className="attendance-mode-switcher">
                   <button 
                     onClick={() => { setMarkingMode('manual'); stopCamera(); }}
                     style={{ 
@@ -1553,8 +1555,9 @@ function TeacherProfile() {
             {markingMode === 'manual' ? (
               <>
                 {(isAttendanceReady || isLoadingStudents) ? (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
+                  <div className="table-responsive">
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
                   <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #e2e8f0' }}>
                     <th style={{ ...thStyle, color: '#475569', padding: '15px' }}>Student Photo</th>
                     <th style={{ ...thStyle, color: '#475569', padding: '15px' }}>Roll Number</th>
@@ -1633,6 +1636,7 @@ function TeacherProfile() {
                   )}
                 </tbody>
               </table>
+              </div>
                 ) : (
                   <div style={{ textAlign: 'center', padding: '80px 40px', background: '#fff', borderRadius: '24px', border: '2px dashed #e2e8f0', margin: '20px 0', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.02)' }}>
                     <div style={{ fontSize: '5rem', marginBottom: '25px', filter: 'grayscale(100%) brightness(1.2)', opacity: 0.5 }}>📋</div>
@@ -1690,7 +1694,7 @@ function TeacherProfile() {
 
                     {/* SCANNER OVERLAYS (ONLY IF NOT SHOWING RESULTS) */}
                     {!showScanResults ? (
-                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', display: 'flex' }}>
+                      <div className="scanner-overlay-container">
                         {/* MAIN CAMERA VIEW */}
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
                           {/* Header Overlay */}
@@ -1833,16 +1837,7 @@ function TeacherProfile() {
                         </div>
 
                         {/* IDENTIFICATION SIDEBAR */}
-                        <div style={{ 
-                          width: '350px', 
-                          background: 'rgba(0,0,0,0.8)', 
-                          backdropFilter: 'blur(20px)', 
-                          borderLeft: '1px solid rgba(255,255,255,0.1)',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          pointerEvents: 'auto',
-                          zIndex: 3100
-                        }}>
+                        <div className="scanner-sidebar">
                           <div style={{ padding: '25px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                             <h3 style={{ color: 'white', margin: 0, fontSize: '1.2rem' }}>Identification Panel</h3>
                             <p style={{ color: '#888', fontSize: '12px', margin: '5px 0 0 0' }}>Click on students to verify their presence in the class.</p>
@@ -1918,18 +1913,19 @@ function TeacherProfile() {
                         flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '40px',
+                        padding: '40px 20px',
                         color: 'white',
-                        zIndex: 3100
+                        zIndex: 3100,
+                        overflowY: 'auto'
                       }}>
-                        <div style={{ maxWidth: '1000px', width: '100%', height: '90%', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ maxWidth: '1000px', width: '100%', minHeight: '90%', display: 'flex', flexDirection: 'column' }}>
                           <div style={{ textAlign: 'center', marginBottom: '30px' }}>
                             <div style={{ fontSize: '3rem', marginBottom: '10px' }}>🎯</div>
                             <h2 style={{ fontSize: '2.5rem', margin: '0 0 10px 0', color: '#8a2c20' }}>Attendance Scan Results</h2>
                             <p style={{ color: '#aaa', fontSize: '1.1rem' }}>Identified <strong>{scanResultsData.present.length}</strong> students present out of {filteredBySemester.length} total.</p>
                           </div>
 
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', flex: 1, overflow: 'hidden' }}>
+                          <div className="scanner-results-columns">
                             {/* Present Column */}
                             <div style={{ background: 'rgba(46,125,50,0.1)', borderRadius: '25px', padding: '30px', display: 'flex', flexDirection: 'column', border: '1px solid rgba(46,125,50,0.3)' }}>
                               <h3 style={{ color: '#4caf50', display: 'flex', justifyContent: 'space-between', marginBottom: '25px', fontSize: '1.4rem' }}>
@@ -2075,9 +2071,9 @@ function TeacherProfile() {
 
           return (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div className="teacher-history-header">
                 <h3 style={{ color: '#8a2c20', borderBottom: '1px solid #eee', paddingBottom: '10px', margin: 0 }}>Previous Attendance Records</h3>
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div className="teacher-history-filters">
                   <select 
                     value={historyCourseFilter} 
                     onChange={(e) => { setHistoryCourseFilter(e.target.value); setHistorySubjectFilter(''); }}
@@ -2142,8 +2138,9 @@ function TeacherProfile() {
                   {historySemesterFilter === 'All' ? 'No attendance history found yet.' : `No history records found for the selected criteria.`}
                 </p>
               ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                  <thead>
+                <div className="table-responsive">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
                     <tr style={{ background: '#f8f9fa', fontSize: '12px', textTransform: 'uppercase' }}>
                       <th style={thStyle}>Date</th>
                       <th style={thStyle}>Proof</th>
@@ -2211,6 +2208,7 @@ function TeacherProfile() {
                     )}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           );

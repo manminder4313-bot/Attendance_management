@@ -1381,3 +1381,222 @@ header {
         display: none;
     }
 }
+
+/* Global Responsive Table Utilities */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-top: 15px;
+    border-radius: 8px;
+}
+.table-responsive table {
+    min-width: 800px;
+}
+
+/* Teacher Dashboard Responsive Classes */
+.teacher-profile-container {
+    padding: 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+    min-height: 80vh;
+    width: 100%;
+}
+@media (max-width: 768px) {
+    .teacher-profile-container {
+        padding: 15px;
+    }
+}
+
+/* Smart Scanner Responsive Layouts */
+.scanner-overlay-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: row;
+}
+
+.scanner-sidebar {
+    width: 350px;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(20px);
+    border-left: 1px solid rgba(255,255,255,0.1);
+    display: flex;
+    flex-direction: column;
+    pointer-events: auto;
+    z-index: 3100;
+}
+
+.scanner-results-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    flex: 1;
+    overflow: hidden;
+}
+
+@media (max-width: 900px) {
+    .scanner-overlay-container {
+        flex-direction: column;
+        overflow-y: auto;
+        pointer-events: auto;
+    }
+    
+    .scanner-sidebar {
+        width: 100%;
+        height: auto;
+        border-left: none;
+        border-top: 1px solid rgba(255,255,255,0.1);
+        flex-shrink: 0;
+        pointer-events: auto;
+    }
+    
+    .scanner-results-columns {
+        grid-template-columns: 1fr;
+        gap: 15px;
+        overflow-y: auto;
+    }
+}
+
+/* Admin Dashboard Responsive Day Manager & Modals */
+.admin-days-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 2fr;
+    gap: 30px;
+}
+
+.admin-stats-filters {
+    background: #f8f9fa;
+    padding: 25px;
+    border-radius: 15px;
+    margin-bottom: 30px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.admin-modal-header {
+    display: flex;
+    gap: 25px;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 20px;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 900px) {
+    .admin-days-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+}
+
+@media (max-width: 768px) {
+    .admin-stats-filters {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+        padding: 15px;
+    }
+}
+
+@media (max-width: 600px) {
+    .admin-modal-header {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+}
+
+/* Teacher Dashboard - Attendance Header & Mode Switcher */
+.teacher-attendance-header {
+    padding: 25px 30px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(to right, #fcfcfc, #fff);
+    gap: 20px;
+}
+
+.attendance-mode-switcher {
+    display: flex;
+    background: #f1f5f9;
+    padding: 4px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+/* Teacher Dashboard - History Header & Filters */
+.teacher-history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 15px;
+}
+
+.teacher-history-filters {
+    display: flex;
+    gap: 10px;
+}
+
+@media (max-width: 900px) {
+    .teacher-attendance-header {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 20px 15px;
+    }
+    
+    .attendance-mode-switcher {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+    
+    .attendance-mode-switcher button {
+        flex: 1;
+        justify-content: center;
+        padding: 10px 12px !important;
+    }
+
+    .teacher-history-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .teacher-history-filters {
+        width: 100%;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .teacher-history-filters select,
+    .teacher-history-filters button {
+        width: 100%;
+        box-sizing: border-box;
+    }
+}
+
+@media (max-width: 600px) {
+    .attendance-mode-switcher {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        background: none !important;
+        border: none !important;
+        padding: 0 !important;
+    }
+    
+    .attendance-mode-switcher button {
+        width: 100% !important;
+        box-sizing: border-box !important;
+        border: 1.5px solid #e2e8f0 !important;
+        border-radius: 10px !important;
+        margin: 0 !important;
+        flex: none !important;
+    }
+}

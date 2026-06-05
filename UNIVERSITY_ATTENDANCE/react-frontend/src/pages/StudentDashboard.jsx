@@ -10,6 +10,7 @@ function StudentDashboard() {
   const [attendanceRecords, setAttendanceRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Password change states
   const [showPwdModal, setShowPwdModal] = useState(false);
@@ -298,31 +299,37 @@ function StudentDashboard() {
   };
 
   return (
-    <div className="dashboard-container">
+    <div className={`dashboard-container ${isSidebarOpen ? 'sidebar-open' : ''}`}>
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">
           <img src="/IMAGES/logo.webp" alt="Logo" style={{ width: '40px' }} />
           <span>MRSPTU</span>
         </div>
         <ul className="sidebar-menu">
-          <li className={`sidebar-item ${activeView === 'details' ? 'active' : ''}`} onClick={() => setActiveView('details')}>
+          <li className={`sidebar-item ${activeView === 'details' ? 'active' : ''}`} onClick={() => { setActiveView('details'); setIsSidebarOpen(false); }}>
             <i className="fas fa-user-circle"></i> My Details
           </li>
-          <li className={`sidebar-item ${activeView === 'attendance' ? 'active' : ''}`} onClick={() => setActiveView('attendance')}>
+          <li className={`sidebar-item ${activeView === 'attendance' ? 'active' : ''}`} onClick={() => { setActiveView('attendance'); setIsSidebarOpen(false); }}>
             <i className="fas fa-calendar-check"></i> Attendance
           </li>
-          <li className="sidebar-item"><i className="fas fa-book"></i> Academic</li>
-          <li className="sidebar-item"><i className="fas fa-file-alt"></i> Examinations</li>
-          <li className="sidebar-item"><i className="fas fa-folder-open"></i> Study Materials</li>
-          <li className="sidebar-item" onClick={() => setShowPwdModal(true)}><i className="fas fa-key"></i> Change Password</li>
+          <li className="sidebar-item" onClick={() => setIsSidebarOpen(false)}><i className="fas fa-book"></i> Academic</li>
+          <li className="sidebar-item" onClick={() => setIsSidebarOpen(false)}><i className="fas fa-file-alt"></i> Examinations</li>
+          <li className="sidebar-item" onClick={() => setIsSidebarOpen(false)}><i className="fas fa-folder-open"></i> Study Materials</li>
+          <li className="sidebar-item" onClick={() => { setShowPwdModal(true); setIsSidebarOpen(false); }}><i className="fas fa-key"></i> Change Password</li>
           <li className="sidebar-item" onClick={handleLogout}><i className="fas fa-sign-out-alt"></i> Logout</li>
         </ul>
       </aside>
+      {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>}
 
       {/* Main Content */}
       <main className="main-content">
         <header className="topbar">
+          <div className={`sidebar-toggle-btn ${isSidebarOpen ? 'open' : ''}`} onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+            <div className="bar1"></div>
+            <div className="bar2"></div>
+            <div className="bar3"></div>
+          </div>
           <div className="search-container">
             <i className="fas fa-search"></i>
             <input type="text" placeholder="Search Attendance, Subject..." />
@@ -416,7 +423,8 @@ function StudentDashboard() {
                 </div>
 
                 <div className="card" style={{ padding: '0' }}>
-                  <table className="student-table">
+                  <div className="table-responsive">
+                    <table className="student-table">
                     <thead>
                       <tr>
                         <th>Date</th>
@@ -459,6 +467,7 @@ function StudentDashboard() {
                       )}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </div>
 
